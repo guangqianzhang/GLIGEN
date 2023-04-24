@@ -292,7 +292,18 @@ def merge(merge_in_folder, merge_out_folder):
     writer.close()
 
 
+'''拆分部分：
 
+    --tsv_path：要拆分的 TSV 文件的路径。
+    --lineidx_path：TSV 文件的行索引文件的路径。行索引文件包含TSV文件中每行的字节偏移量，这对于拆分大文件而不必将整个文件读入内存很有用。
+    --out_folder：拆分文件将保存的输出文件夹。
+    --keep_folder_if_exist：如果提供了此标志，则程序不会在输出文件夹已存在的情况下删除它。
+    --chuck_size：每个块或拆分文件的大小（以字节为单位）。默认情况下，它设置为1GB。
+
+合并部分：
+
+    --merge_in_folder：包含拆分 TSV 文件的输入文件夹。
+    --merge_out_folder：合并的 TSV 文件将保存的输出文件夹。'''
 if __name__ == "__main__":
 
 
@@ -307,7 +318,7 @@ if __name__ == "__main__":
     
     
     # merge args
-    parser.add_argument("--merge_in_folder", type=str,  default='out', help="")
+    parser.add_argument("--merge_in_folder", type=str,  default='out/cc3m', help="")
     parser.add_argument("--merge_out_folder", type=str,  default='merged_tsv', help="")
 
     args = parser.parse_args()
