@@ -374,10 +374,10 @@ def run(meta, config, starting_noise=None):
         batch = prepare_batch_sem(meta, config.batch_size)
     else:
         batch = prepare_batch(meta, config.batch_size)
-    context = text_encoder.encode(  [meta["prompt"]]*config.batch_size  )
-    uc = text_encoder.encode( config.batch_size*[""] )
+    context = text_encoder.encode(  [meta["prompt"]]*config.batch_size  )  # CLIP
+    uc      = text_encoder.encode( config.batch_size*[""] )  # 控制条件的向量，这里采用的是空字符串列表
     if args.negative_prompt is not None:
-        uc = text_encoder.encode( config.batch_size*[args.negative_prompt] )
+        uc  = text_encoder.encode( config.batch_size*[args.negative_prompt] )
 
 
     # - - - - - sampler - - - - - # 
@@ -387,24 +387,25 @@ def run(meta, config, starting_noise=None):
         steps = 250 
     else:
         sampler = PLMSSampler(diffusion, model, alpha_generator_func=alpha_generator_func, set_alpha_scale=set_alpha_scale)
-        steps = 50 
+        steps = 50   # 概率学习模型来估计每个时间步的条件分布 时间少计算成本高
 
 
     # - - - - - inpainting related - - - - - #
+    # z0是指初始时间步中的噪声序列，设置z0的值来控制生成的图像的初始状态。
+    # inpainting_mask：which pixels in the image are missing or should be inpainted.
     inpainting_mask = z0 = None  # used for replacing known region in diffusion process
     inpainting_extra_input = None # used as model input 
     if "input_image" in meta:
         # inpaint mode 
         assert config.inpaint_mode, 'input_image is given, the ckpt must be the inpaint model, are you using the correct ckpt?'
         
-        inpainting_mask = draw_masks_from_boxes( batch['boxes'], model.image_size  ).cuda()
-        
+        inpainting_mask = draw_masks_from_boxes( batch['boxes'], model.image_size  ).cuda()  # 修复mask:
         input_image = F.pil_to_tensor( Image.open(meta["input_image"]).convert("RGB").resize((512,512)) ) 
         input_image = ( input_image.float().unsqueeze(0).cuda() / 255 - 0.5 ) / 0.5
-        z0 = autoencoder.encode( input_image )
+        z0 = autoencoder.encode( input_image )  # z0:
         
-        masked_z = z0*inpainting_mask
-        inpainting_extra_input = torch.cat([masked_z,inpainting_mask], dim=1)              
+        masked_z = z0*inpainting_mask  #
+        inpainting_extra_input = torch.cat([masked_z,inpainting_mask], dim=1)  # cat maskz and inpaintmask
     
 
     # - - - - - input for gligen - - - - - #
@@ -416,7 +417,7 @@ def run(meta, config, starting_noise=None):
     input = dict(
                 x = starting_noise, 
                 timesteps = None, 
-                context = context, 
+                context = context,  # CLIP
                 grounding_input = grounding_input,
                 inpainting_extra_input = inpainting_extra_input,
                 grounding_extra_input = grounding_extra_input,
@@ -427,7 +428,8 @@ def run(meta, config, starting_noise=None):
     # - - - - - start sampling - - - - - #
     shape = (config.batch_size, model.in_channels, model.image_size, model.image_size)
 
-    samples_fake = sampler.sample(S=steps, shape=shape, input=input,  uc=uc, guidance_scale=config.guidance_scale, mask=inpainting_mask, x0=z0)
+    samples_fake = sampler.sample(S=steps, shape=shape, input=input,  uc=uc,
+                                  guidance_scale=config.guidance_scale, mask=inpainting_mask, x0=z0)
     samples_fake = autoencoder.decode(samples_fake)
 
 
@@ -440,8 +442,8 @@ def run(meta, config, starting_noise=None):
     print(image_ids)
     for image_id, sample in zip(image_ids, samples_fake):
         img_name = str(int(image_id))+'.png'
-        sample = torch.clamp(sample, min=-1, max=1) * 0.5 + 0.5
-        sample = sample.cpu().numpy().transpose(1,2,0) * 255 
+        sample = torch.clamp(sample, min=-1, max=1) * 0.5 + 0.5  # 像素值映射到[0, 1]
+        sample = sample.cpu().numpy().transpose(1,2,0) * 255  # 转为(height, width, channel)[0,255]
         sample = Image.fromarray(sample.astype(np.uint8))
         sample.save(  os.path.join(output_folder, img_name)   )
 
@@ -564,7 +566,7 @@ if __name__ == "__main__":
         # - - - - - - - - GLIGEN on depth grounding for generation - - - - - - - - # 
         dict(
             ckpt ="./gligen_checkpoints/checkpoint_generation_depth.pth",
-            prompt = "a lovely dog play on table", #
+            prompt = "a lovely cat play on table", #
             depth = 'inference_images/depth_bird.png', 
             alpha_type = [0.7, 0, 0.3], 
             save_folder_name="depth"

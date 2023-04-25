@@ -266,6 +266,7 @@ def split(tsv_path, lineidx_path, out_folder, keep_folder_if_exist, chuck_size):
 def merge(merge_in_folder, merge_out_folder):
 
     files = os.listdir(merge_in_folder)
+    files.sort(key=lambda x: (x.split('.')[-1], x.split('.')[0]))
     N = len(files)
 
     lineidx_files = files[0:N//2]
