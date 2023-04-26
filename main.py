@@ -29,7 +29,8 @@ if __name__ == "__main__":
     parser.add_argument("--scheduler_type", type=str,  default='constant', help="cosine or constant")
     parser.add_argument("--batch_size", type=int,  default=2, help="")
     parser.add_argument("--workers", type=int,  default=1, help="")
-    parser.add_argument("--official_ckpt_name", type=str,  default="sd-v1-4.ckpt", help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
+    parser.add_argument("--official_ckpt_name", type=str,  default="sd-v1-4.ckpt",
+                        help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
     parser.add_argument("--ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None,  default=None, 
         help=("If given, then it will start training from this ckpt"
               "It has higher prioty than official_ckpt_name, but lower than the ckpt found in autoresuming (see trainer.py) "
@@ -37,14 +38,17 @@ if __name__ == "__main__":
     )
     
     parser.add_argument('--inpaint_mode', default=False, type=lambda x:x.lower() == "true", help="Train a GLIGEN model in inpaitning setting")
-    parser.add_argument('--randomize_fg_mask', default=False, type=lambda x:x.lower() == "true", help="Only used if inpaint_mode is true. If true, 0.5 chance that fg mask will not be a box but a random mask. See code for details")
-    parser.add_argument('--random_add_bg_mask', default=False, type=lambda x:x.lower() == "true", help="Only used if inpaint_mode is true. If true, 0.5 chance add arbitrary mask for the whole image. See code for details")
+    parser.add_argument('--randomize_fg_mask', default=False, type=lambda x:x.lower() == "true",
+                        help="Only used if inpaint_mode is true. If true, 0.5 chance that fg mask will not be a box but a random mask. See code for details")
+    parser.add_argument('--random_add_bg_mask', default=False, type=lambda x:x.lower() == "true",
+                        help="Only used if inpaint_mode is true. If true, 0.5 chance add arbitrary mask for the whole image. See code for details")
     
     parser.add_argument('--enable_ema', default=False, type=lambda x:x.lower() == "true")
     parser.add_argument("--ema_rate", type=float,  default=0.9999, help="")
     parser.add_argument("--total_iters", type=int,  default=500000, help="")
     parser.add_argument("--save_every_iters", type=int,  default=5000, help="")
-    parser.add_argument("--disable_inference_in_training", type=lambda x:x.lower() == "true",  default=False, help="Do not do inference, thus it is faster to run first a few iters. It may be useful for debugging ")
+    parser.add_argument("--disable_inference_in_training", type=lambda x:x.lower() == "true",  default=False,
+                        help="Do not do inference, thus it is faster to run first a few iters. It may be useful for debugging ")
 
 
     args = parser.parse_args()

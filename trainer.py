@@ -171,7 +171,7 @@ class Trainer:
 
         self.l_simple_weight = 1
         self.name, self.writer, checkpoint = create_expt_folder_with_auto_resuming(config.OUTPUT_ROOT, config.name)
-        if get_rank() == 0:
+        if get_rank() == 0:  # cuda
             shutil.copyfile(config.yaml_file, os.path.join(self.name, "train_config_file.yaml")  )
             self.config_dict = vars(config)
             torch.save(  self.config_dict,  os.path.join(self.name, "config_dict.pth")     )
@@ -183,9 +183,10 @@ class Trainer:
         self.text_encoder = instantiate_from_config(config.text_encoder).to(self.device)
         self.diffusion = instantiate_from_config(config.diffusion).to(self.device)
 
-        
+        # 读取SD ckpt模型
         state_dict = read_official_ckpt(  os.path.join(config.DATA_ROOT, config.official_ckpt_name)   )
-        
+
+        # 添加网络
         # modify the input conv for SD if necessary (grounding as unet input; inpaint)
         additional_channels = self.model.additional_channel_from_downsampler
         if self.config.inpaint_mode:
@@ -271,16 +272,18 @@ class Trainer:
 
         # = = = = = = = = = = = = = = = = = = = = create data = = = = = = = = = = = = = = = = = = = = #  
         train_dataset_repeats = config.train_dataset_repeats if 'train_dataset_repeats' in config else None
+        # 训练数据集
         dataset_train = ConCatDataset(config.train_dataset_names, config.DATA_ROOT, train=True, repeats=train_dataset_repeats)
-        sampler = DistributedSampler(dataset_train, seed=config.seed) if config.distributed else None 
+        sampler = DistributedSampler(dataset_train, seed=config.seed) if config.distributed else None  # 分布式随机采样器
         loader_train = DataLoader( dataset_train,  batch_size=config.batch_size, 
                                                    shuffle=(sampler is None),
                                                    num_workers=config.workers, 
                                                    pin_memory=True, 
                                                    sampler=sampler)
         self.dataset_train = dataset_train
-        self.loader_train = wrap_loader(loader_train)
+        self.loader_train = wrap_loader(loader_train)  # 构建生成器 实现数据集的逐步生成
 
+        # 加载数据集图片
         if get_rank() == 0:
             total_image = dataset_train.total_images()
             print("Total training images: ", total_image)     
@@ -328,9 +331,9 @@ class Trainer:
     @torch.no_grad()
     def get_input(self, batch):
 
-        z = self.autoencoder.encode( batch["image"] )
+        z = self.autoencoder.encode( batch["image"] )  # 低维图像编码
 
-        context = self.text_encoder.encode( batch["caption"]  )
+        context = self.text_encoder.encode( batch["caption"]  )  # 低维文本编码
 
         _t = torch.rand(z.shape[0]).to(z.device)
         t = (torch.pow(_t, 1) * 1000).long()
@@ -351,11 +354,12 @@ class Trainer:
 
 
     def run_one_step(self, batch):
+        # 图像编码、时间步、文本编码
         x_start, t, context, inpainting_extra_input, grounding_extra_input = self.get_input(batch)
-        noise = torch.randn_like(x_start)
-        x_noisy = self.diffusion.q_sample(x_start=x_start, t=t, noise=noise)
+        noise = torch.randn_like(x_start)  # 图片高斯
+        x_noisy = self.diffusion.q_sample(x_start=x_start, t=t, noise=noise)  # 噪声图
 
-        grounding_input = self.grounding_tokenizer_input.prepare(batch)
+        grounding_input = self.grounding_tokenizer_input.prepare(batch)  # grounding_input
         input = dict(x=x_noisy, 
                     timesteps=t, 
                     context=context, 
@@ -380,10 +384,10 @@ class Trainer:
             self.iter_idx = iter_idx
 
             self.opt.zero_grad()
-            batch = next(self.loader_train)
+            batch = next(self.loader_train)  # 生成器依次获取batch
             batch_to_device(batch, self.device)
 
-            loss = self.run_one_step(batch)
+            loss = self.run_one_step(batch)  # 这个batch里是个什么？？？？？？？
             loss.backward()
             self.opt.step() 
             self.scheduler.step()
