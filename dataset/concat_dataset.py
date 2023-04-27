@@ -10,28 +10,28 @@ class ConCatDataset():
         offset_map = []
         which_dataset = []
         # repeats？？
-        if repeats is None:
-            repeats = [1] * len(dataset_name_list)
+        if repeats is None:  # 1
+            repeats = [1] * len(dataset_name_list)  # config中设置，可以为list
         else:
             assert len(repeats) == len(dataset_name_list)
-
-        Catalog = DatasetCatalog(ROOT)  # 指定数据集类型target和路径train_params
-        for dataset_idx, (dataset_name, yaml_params) in enumerate(dataset_name_list.items()):
+        # seg：ADEChallengeData2016 ，depth:tsv
+        Catalog = DatasetCatalog(ROOT)  # 所有数据集类型target和路径train_params
+        for dataset_idx, (dataset_name, yaml_params) in enumerate(dataset_name_list.items()): # config中设置，可以为list
             repeat = repeats[dataset_idx]
 
-            dataset_dict = getattr(Catalog, dataset_name)
+            dataset_dict = getattr(Catalog, dataset_name)  # 获得对应数据集路径
 
             target = dataset_dict['target']  # 数据类型
             params = dataset_dict['train_params'] if train else dataset_dict['val_params']  # 数据路径
-            if yaml_params is not None:  # ？？？
+            if yaml_params is not None:  # yaml中设置的数据参数
                 params.update(yaml_params)
             dataset = instantiate_from_config(dict(target=target, params=params))
 
             self.datasets.append(dataset)
             for _ in range(repeat):
-                offset_map.append(torch.ones(len(dataset)) * cul_previous_dataset_length)
-                which_dataset.append(torch.ones(len(dataset)) * dataset_idx)
-                cul_previous_dataset_length += len(dataset)
+                offset_map.append(torch.ones(len(dataset)) * cul_previous_dataset_length)  # tensor(37476)[0,0...]
+                which_dataset.append(torch.ones(len(dataset)) * dataset_idx)  # 数据集id
+                cul_previous_dataset_length += len(dataset)  # 37476
         offset_map = torch.cat(offset_map, dim=0).long()
         self.total_length = cul_previous_dataset_length
 

@@ -66,8 +66,8 @@ class DepthDataset():
 
 
     def get_item_from_tsv(self, index):
-        _, item = self.tsv_file[index]
-        item = decode_item(item)
+        _, item = self.tsv_file[index]  # 20271
+        item = decode_item(item)  # decode image 和 ann
         return item
 
 

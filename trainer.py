@@ -170,7 +170,7 @@ class Trainer:
         self.device = torch.device("cuda")
 
         self.l_simple_weight = 1
-        self.name, self.writer, checkpoint = create_expt_folder_with_auto_resuming(config.OUTPUT_ROOT, config.name)
+        self.name, self.writer, checkpoint = create_expt_folder_with_auto_resuming(config.OUTPUT_ROOT, config.name)   # name=test
         if get_rank() == 0:  # cuda
             shutil.copyfile(config.yaml_file, os.path.join(self.name, "train_config_file.yaml")  )
             self.config_dict = vars(config)
@@ -178,25 +178,25 @@ class Trainer:
 
 
         # = = = = = = = = = = = = = = = = = create model and diffusion = = = = = = = = = = = = = = = = = #
-        self.model = instantiate_from_config(config.model).to(self.device)
-        self.autoencoder = instantiate_from_config(config.autoencoder).to(self.device)
+        self.model = instantiate_from_config(config.model).to(self.device)  # UNet
+        self.autoencoder = instantiate_from_config(config.autoencoder).to(self.device)  # ldm autoencoder
         self.text_encoder = instantiate_from_config(config.text_encoder).to(self.device)
-        self.diffusion = instantiate_from_config(config.diffusion).to(self.device)
+        self.diffusion = instantiate_from_config(config.diffusion).to(self.device)  # ldm
 
         # 读取SD ckpt模型
-        state_dict = read_official_ckpt(  os.path.join(config.DATA_ROOT, config.official_ckpt_name)   )
+        state_dict = read_official_ckpt(  os.path.join(config.DATA_ROOT, config.official_ckpt_name)   )  # 'DATA/sd-v1-4.ckpt'
 
         # 添加网络
         # modify the input conv for SD if necessary (grounding as unet input; inpaint)
-        additional_channels = self.model.additional_channel_from_downsampler
+        additional_channels = self.model.additional_channel_from_downsampler  # 8
         if self.config.inpaint_mode:
             additional_channels += 5 # 5 = 4(latent) + 1(mask)
-        add_additional_channels(state_dict["model"], additional_channels)
+        add_additional_channels(state_dict["model"], additional_channels)  # sd 添加了一些层，初始权重0
         self.input_conv_train = True if additional_channels>0 else False
 
         # load original SD ckpt (with inuput conv may be modified) 
         missing_keys, unexpected_keys = self.model.load_state_dict( state_dict["model"], strict=False  )
-        assert unexpected_keys == []
+        assert unexpected_keys == []  # 不为空报错，严格加载模型，不允许不匹配
         original_params_names = list( state_dict["model"].keys()  ) # used for sanity check later 
         
         self.autoencoder.load_state_dict( state_dict["autoencoder"]  )
@@ -216,7 +216,7 @@ class Trainer:
 
         # = = = = = = = = = = = = = = = = = create opt = = = = = = = = = = = = = = = = = #
         params = []
-        trainable_names = []
+        trainable_names = []  # 可训练参数
         all_params_name = []
         for name, p in self.model.named_parameters():
             if ("transformer_blocks" in name) and ("fuser" in name):
@@ -273,7 +273,7 @@ class Trainer:
         # = = = = = = = = = = = = = = = = = = = = create data = = = = = = = = = = = = = = = = = = = = #  
         train_dataset_repeats = config.train_dataset_repeats if 'train_dataset_repeats' in config else None
         # 训练数据集
-        dataset_train = ConCatDataset(config.train_dataset_names, config.DATA_ROOT, train=True, repeats=train_dataset_repeats)
+        dataset_train = ConCatDataset(config.train_dataset_names, config.DATA_ROOT, train=True, repeats=train_dataset_repeats)  # 合并数据集
         sampler = DistributedSampler(dataset_train, seed=config.seed) if config.distributed else None  # 分布式随机采样器
         loader_train = DataLoader( dataset_train,  batch_size=config.batch_size, 
                                                    shuffle=(sampler is None),
@@ -384,10 +384,10 @@ class Trainer:
             self.iter_idx = iter_idx
 
             self.opt.zero_grad()
-            batch = next(self.loader_train)  # 生成器依次获取batch
+            batch = next(self.loader_train)  # 生成器依次获取batch 2x3x512x512 x2(image depth_image)
             batch_to_device(batch, self.device)
 
-            loss = self.run_one_step(batch)  # 这个batch里是个什么？？？？？？？
+            loss = self.run_one_step(batch)
             loss.backward()
             self.opt.step() 
             self.scheduler.step()
