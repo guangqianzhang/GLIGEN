@@ -31,13 +31,14 @@ if __name__ == "__main__":
     parser.add_argument("--workers", type=int,  default=1, help="")
     parser.add_argument("--official_ckpt_name", type=str,  default="sd-v1-4.ckpt",
                         help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
-    parser.add_argument("--ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None,  default=None, 
+    parser.add_argument("--ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None,  default=None,
         help=("If given, then it will start training from this ckpt"
               "It has higher prioty than official_ckpt_name, but lower than the ckpt found in autoresuming (see trainer.py) "
               "It must be given if inpaint_mode is true")
     )
-    
-    parser.add_argument('--inpaint_mode', default=False, type=lambda x:x.lower() == "true", help="Train a GLIGEN model in inpaitning setting")
+    # inpaint mode
+    parser.add_argument('--inpaint_mode', default=False, type=lambda x:x.lower() == "true",
+                        help="Train a GLIGEN model in inpaitning setting")
     parser.add_argument('--randomize_fg_mask', default=False, type=lambda x:x.lower() == "true",
                         help="Only used if inpaint_mode is true. If true, 0.5 chance that fg mask will not be a box but a random mask. See code for details")
     parser.add_argument('--random_add_bg_mask', default=False, type=lambda x:x.lower() == "true",
@@ -73,7 +74,7 @@ if __name__ == "__main__":
     if args.inpaint_mode:
         config.model.params.inpaint_mode = True
 
-
+    # 初始化训练参数
     trainer = Trainer(config)
     synchronize()
     trainer.start_training()
