@@ -20,7 +20,7 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str,  default="test", help="experiment will be stored in OUTPUT_ROOT/name")
     parser.add_argument("--seed", type=int,  default=123, help="used in sampler")
     parser.add_argument("--local_rank", type=int, default=0)
-    parser.add_argument("--yaml_file", type=str,  default="configs/cc3m_depth.yaml", help="paths to base configs.")
+    parser.add_argument("--yaml_file", type=str,  default="configs/depth_sem.yaml", help="paths to base configs.")
 
 
     parser.add_argument("--base_learning_rate", type=float,  default=5e-5, help="")

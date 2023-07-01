@@ -76,7 +76,15 @@ class DatasetCatalog:
             ),
         }
 
-
+        self.Sem_Depth={
+            "target": "dataset.dataset_sem_dep.Sem_depDataset",
+            "train_params": dict(
+                image_rootdir='/home/cqjtu/Documents/dataset/gligen/test/img',
+                depth_rootdir='/home/cqjtu/Documents/dataset/gligen/test/dep',
+                sem_rootdir='/home/cqjtu/Documents/dataset/gligen/test/seg',
+                caption_path='/home/cqjtu/Documents/dataset/gligen/test/test_caption.json'
+            ),
+        }
 
         # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - # 
 
@@ -128,9 +136,12 @@ class DatasetCatalog:
         self.ADESemantic = {   
             "target": "dataset.dataset_sem.SemanticDataset",
             "train_params":dict(
-                image_rootdir = os.path.join(ROOT,'ADE/ADEChallengeData2016/images/training'),
-                sem_rootdir = os.path.join(ROOT,'ADE/ADEChallengeData2016/annotations/training'),
-                caption_path = os.path.join(ROOT,'ADE/ade_train_images_cation.json'),
+                # image_rootdir = os.path.join(ROOT,'ADE/ADEChallengeData2016/images/training'),
+                # sem_rootdir = os.path.join(ROOT,'ADE/ADEChallengeData2016/annotations/training'),
+                # caption_path = os.path.join(ROOT,'ADE/ade_train_images_cation.json'),
+                image_rootdir = '/home/cqjtu/Documents/dataset/gligen/img',
+                sem_rootdir = '/home/cqjtu/Documents/dataset/gligen/seg',
+                caption_path = '/home/cqjtu/Documents/dataset/gligen/nusenes_train_images_cation.json',
             ),
         }
 

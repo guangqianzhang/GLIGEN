@@ -73,7 +73,7 @@ def read_official_ckpt(ckpt_path):
 
     for k,v in state_dict.items():
         if k.startswith('model.diffusion_model'):
-            out["model"][k.replace("model.diffusion_model.", "")] = v 
+            out["model"][k.replace("model.diffusion_model.", "")] = v  #去掉前缀 
         elif k.startswith('cond_stage_model'):
             out["text_encoder"][k.replace("cond_stage_model.", "")] = v 
         elif k.startswith('first_stage_model'):
@@ -275,7 +275,7 @@ class Trainer:
         # 训练数据集
         dataset_train = ConCatDataset(config.train_dataset_names, config.DATA_ROOT, train=True, repeats=train_dataset_repeats)  # 合并数据集
         sampler = DistributedSampler(dataset_train, seed=config.seed) if config.distributed else None  # 分布式随机采样器
-        loader_train = DataLoader( dataset_train,  batch_size=config.batch_size, 
+        loader_train = DataLoader( dataset_train,  batch_size=config.batch_size,
                                                    shuffle=(sampler is None),
                                                    num_workers=config.workers, 
                                                    pin_memory=True, 
@@ -379,15 +379,15 @@ class Trainer:
     def start_training(self):
 
         iterator = tqdm(range(self.starting_iter, self.config.total_iters), desc='Training progress',  disable=get_rank() != 0 )
-        self.model.train()
+        self.model.train()   
         for iter_idx in iterator: # note: iter_idx is not from 0 if resume training
             self.iter_idx = iter_idx
 
             self.opt.zero_grad()
-            batch = next(self.loader_train)  # 生成器依次获取batch 2x3x512x512 x2(image depth_image)
+            batch = next(self.loader_train)  # 生成器依次获取batch image 3x512x512 sem 152x512x512 dep 1x512x512
             batch_to_device(batch, self.device)
 
-            loss = self.run_one_step(batch)
+            loss = self.run_one_step(batch)  # run_one_step
             loss.backward()
             self.opt.step() 
             self.scheduler.step()

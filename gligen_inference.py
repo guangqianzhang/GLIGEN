@@ -574,17 +574,17 @@ if __name__ == "__main__":
 
 
         # - - - - - - - - GLIGEN on sem grounding for generation - - - - - - - - #
-        dict(
-            ckpt ="../gligen_checkpoints/checkpoint_generation_sem.pth",
-            prompt = "a semi truck driving down a street next to tall buildings", #
-            sem = '/home/cqjtu/PycharmProjects/InternImage/segmentation/demo/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915630862465.jpg', # ADE raw annotation
-            # prompt = "a large building with a fountain inside of it", #
-            # sem = '/home/cqjtu/PycharmProjects/InternImage/segmentation/demo/ADE_train_00000001.jpg', # ADE raw annotation
-            # prompt="a living room filled with lots of furniture and plants",  #
-            # sem='inference_images/sem_ade_living_room.png',  # ADE raw annotation
-            alpha_type = [0.7, 0, 0.3],
-            save_folder_name="sem"
-        ),
+        # dict(
+        #     ckpt ="../gligen_checkpoints/checkpoint_generation_sem.pth",
+        #     prompt = "a semi truck driving down a street next to tall buildings", #
+        #     sem = '/home/cqjtu/PycharmProjects/InternImage/segmentation/demo/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915630862465.jpg', # ADE raw annotation
+        #     # prompt = "a large building with a fountain inside of it", #
+        #     # sem = '/home/cqjtu/PycharmProjects/InternImage/segmentation/demo/ADE_train_00000001.jpg', # ADE raw annotation
+        #     # prompt="a living room filled with lots of furniture and plants",  #
+        #     # sem='inference_images/sem_ade_living_room.png',  # ADE raw annotation
+        #     alpha_type = [0.7, 0, 0.3],
+        #     save_folder_name="sem"
+        # ),
         #
         #
         #
