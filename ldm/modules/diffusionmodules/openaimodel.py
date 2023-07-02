@@ -275,7 +275,7 @@ class UNetModel(nn.Module):
         self.inpaint_mode = inpaint_mode
         assert fuser_type in ["gatedSA","gatedSA2","gatedCA"]
 
-        self.grounding_tokenizer_input = None # set externally 
+        self.grounding_tokenizer_input = None # set externally in trainer.py
 
 
         time_embed_dim = model_channels * 4
@@ -292,8 +292,9 @@ class UNetModel(nn.Module):
         self.first_conv_type = "SD"
         self.first_conv_restorable = True 
         if grounding_downsampler is not None:
-            self.downsample_net = instantiate_from_config(grounding_downsampler)  
-            self.additional_channel_from_downsampler = self.downsample_net.out_dim
+            self.sem_downsample_net = instantiate_from_config(grounding_downsampler['sem'])
+            self.dep_downsample_net = instantiate_from_config(grounding_downsampler['depth'])
+            self.additional_channel_from_downsampler = self.dep_downsample_net.out_dim
             self.first_conv_type = "GLIGEN"
 
         if inpaint_mode:
@@ -301,7 +302,7 @@ class UNetModel(nn.Module):
             in_c = in_channels+self.additional_channel_from_downsampler+in_channels+1
             self.first_conv_restorable = False # in inpaint; You must use extra channels to take in masked real image  
         else:
-            in_c = in_channels+self.additional_channel_from_downsampler
+            in_c = in_channels+self.additional_channel_from_downsampler  # Conv2d(12, 320, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
         self.input_blocks = nn.ModuleList([TimestepEmbedSequential(conv_nd(dims, in_c, model_channels, 3, padding=1))])
 
 
@@ -321,9 +322,10 @@ class UNetModel(nn.Module):
                                     use_scale_shift_norm=use_scale_shift_norm,) ]
 
                 ch = mult * model_channels
-                if ds in attention_resolutions:
+                if ds in attention_resolutions:  # [ 4, 2, 1 ]
                     dim_head = ch // num_heads
-                    layers.append(SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint))
+                    layers.append(SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head,
+                                                     depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint))
                 
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 input_block_chans.append(ch)
@@ -348,7 +350,8 @@ class UNetModel(nn.Module):
                      dims=dims,
                      use_checkpoint=use_checkpoint,
                      use_scale_shift_norm=use_scale_shift_norm),
-            SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint),
+            SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head,
+                               depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint),
             ResBlock(ch,
                      time_embed_dim,
                      dropout,
@@ -362,7 +365,7 @@ class UNetModel(nn.Module):
 
         
         self.output_blocks = nn.ModuleList([])
-        for level, mult in list(enumerate(channel_mult))[::-1]:
+        for level, mult in list(enumerate(channel_mult))[::-1]:  # 反转
             for i in range(num_res_blocks + 1):
                 ich = input_block_chans.pop()
                 layers = [ ResBlock(ch + ich,
@@ -374,9 +377,10 @@ class UNetModel(nn.Module):
                                     use_scale_shift_norm=use_scale_shift_norm) ]
                 ch = model_channels * mult
                 
-                if ds in attention_resolutions:
+                if ds in attention_resolutions:  # [ 4, 2, 1 ]
                     dim_head = ch // num_heads
-                    layers.append( SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint) )
+                    layers.append( SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads,
+                                                      d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint) )
                 if level and i == num_res_blocks:
                     out_ch = ch
                     layers.append( Upsample(ch, conv_resample, dims=dims, out_channels=out_ch) )
@@ -394,8 +398,9 @@ class UNetModel(nn.Module):
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
 
-        self.position_net = instantiate_from_config(grounding_tokenizer) 
-        
+        self.sem_position_net = instantiate_from_config(grounding_tokenizer['sem'])
+        self.dep_position_net = instantiate_from_config(grounding_tokenizer['depth'])
+
 
     def restore_first_conv_from_SD(self):
         if self.first_conv_restorable:
@@ -416,7 +421,12 @@ class UNetModel(nn.Module):
     def restore_first_conv_from_GLIGEN(self):
         breakpoint() # TODO 
 
-
+    # input = dict(x=x_noisy,
+    #              timesteps=t,
+    #              context=context,
+    #              inpainting_extra_input=inpainting_extra_input,
+    #              grounding_extra_input=grounding_extra_input,  # return batch['depth'],batch['sem']
+    #              grounding_input=grounding_input)  # {'depth': depth,"sem":sem, "mask":mask}
     def forward(self, input):
 
         if ("grounding_input" in input):
@@ -429,18 +439,19 @@ class UNetModel(nn.Module):
             grounding_input = self.grounding_tokenizer_input.get_null_input()
 
 
-        # Grounding tokens: B*N*C
-        objs = self.position_net( **grounding_input )  
-        
+        # Grounding tokens: B*N*C 2x64x768
+        sem_objs = self.sem_position_net( **grounding_input )
+        dep_objs=self.dep_position_net(**grounding_input)
         # Time embedding 
         t_emb = timestep_embedding(input["timesteps"], self.model_channels, repeat_only=False)
-        emb = self.time_embed(t_emb)
+        emb = self.time_embed(t_emb)  #2x1280
 
         # input tensor  
-        h = input["x"]
-        if self.downsample_net != None and self.first_conv_type=="GLIGEN":
-            temp  = self.downsample_net(input["grounding_extra_input"])
-            h = th.cat( [h,temp], dim=1 )
+        h = input["x"]  #2x4x64x64
+        if self.dep_downsample_net != None and self.first_conv_type=="GLIGEN":
+            dep_temp  = self.dep_downsample_net(input["grounding_extra_input"])# 2x8x64x64
+            sem_temp  = self.sem_downsample_net(input["grounding_extra_input"])
+            h = th.cat( [h,dep_temp], dim=1 )
         if self.inpaint_mode:
             if self.downsample_net != None:
                 breakpoint() # TODO: think about this case 
@@ -452,14 +463,14 @@ class UNetModel(nn.Module):
         # Start forwarding 
         hs = []
         for module in self.input_blocks:
-            h = module(h, emb, context, objs)
+            h = module(h, emb, context, sem_objs)
             hs.append(h)
 
-        h = self.middle_block(h, emb, context, objs)
+        h = self.middle_block(h, emb, context, sem_objs)
 
         for module in self.output_blocks:
             h = th.cat([h, hs.pop()], dim=1)
-            h = module(h, emb, context, objs)
+            h = module(h, emb, context, sem_objs)
 
         return self.out(h)
 

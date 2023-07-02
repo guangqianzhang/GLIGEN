@@ -23,30 +23,32 @@ model:
 
 
     grounding_downsampler:
-      target: ldm.modules.diffusionmodules.sem_grounding_downsampler.GroundingDownsampler
-      params:
-        in_dim: 152  # seg
-        resize_input: 256
-        out_dim: 8
+      sem:
+        target: ldm.modules.diffusionmodules.sem_grounding_downsampler.GroundingDownsampler
+        params:
+          in_dim: 152  # seg
+          resize_input: 256
+          out_dim: 8
+      depth:
+        target: ldm.modules.diffusionmodules.depth_grounding_downsampler.GroundingDownsampler
+        params:
+          resize_input: 256
+          out_dim: 8
 
     grounding_tokenizer:
-      target: ldm.modules.diffusionmodules.sem_grounding_net.PositionNet
-      params:
-        in_dim: 152
-        resize_input: 256
-        out_dim: 768
+      sem:
+        target: ldm.modules.diffusionmodules.sem_grounding_net.PositionNet
+        params:
+          in_dim: 152
+          resize_input: 256
+          out_dim: 768
 
-#    grounding_depdownsampler:
-#      target: ldm.modules.diffusionmodules.depth_grounding_downsampler.GroundingDownsampler
-#      params:
-#        resize_input: 256
-#        out_dim: 8
-#
-#    grounding_deptokenizer:
-#      target: ldm.modules.diffusionmodules.depth_grounding_net.PositionNet
-#      params:
-#        resize_input: 256
-#        out_dim: 768
+
+      depth:
+        target: ldm.modules.diffusionmodules.depth_grounding_net.PositionNet
+        params:
+          resize_input: 256
+          out_dim: 768
 
 
 autoencoder:
@@ -85,15 +87,10 @@ train_dataset_names:
 
 
 grounding_tokenizer_input:
-  target: grounding_input.sem_grounding_tokinzer_input.GroundingNetInput
+  target: grounding_input.sem_depth_grounding_tokinzer_input.GroundingNetInput
 
 
 grounding_downsampler_input:
-  target: grounding_input.sem_grounding_downsampler_input.GroundingDSInput
+  target: grounding_input.sem_depth_grounding_downsampler_input.GroundingDSInput
 
-#grounding_dep_tokenizer_input:
-#  target: grounding_input.depth_grounding_tokinzer_input.GroundingNetInput
-#
-#
-#grounding_dep_downsampler_input:
-#  target: grounding_input.depth_grounding_downsampler_input.GroundingDSInput
+

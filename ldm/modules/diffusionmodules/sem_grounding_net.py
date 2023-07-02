@@ -37,7 +37,7 @@ class PositionNet(nn.Module):
         self.null_feature = torch.nn.Parameter(torch.zeros([convnext_feature_dim]))
 
 
-    def forward(self, sem, mask):
+    def forward(self,depth, sem, mask):
         B = sem.shape[0] 
 
         # token from edge map 

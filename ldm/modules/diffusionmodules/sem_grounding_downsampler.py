@@ -18,9 +18,9 @@ class GroundingDownsampler(nn.Module):
             nn.Conv2d(16,self.out_dim,4,2,1)
         )
 
-    def forward(self, grounding_extra_input):
+    def forward(self, grounding_extra_input):  # [1]sem
 
-        out = torch.nn.functional.interpolate(grounding_extra_input, (self.resize_input,self.resize_input), mode='nearest')
+        out = torch.nn.functional.interpolate(grounding_extra_input[1], (self.resize_input,self.resize_input), mode='nearest')
         out = self.layers(out)
 
         assert out.shape[1] == self.out_dim 
