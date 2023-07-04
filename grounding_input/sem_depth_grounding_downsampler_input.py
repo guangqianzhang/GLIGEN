@@ -13,5 +13,5 @@ class GroundingDSInput:
         Please define here how to process the batch and prepare the
         extra input for diffusion model.
         """
-        return batch['depth'],batch['sem']
+        return batch['sem'],batch['depth']
 

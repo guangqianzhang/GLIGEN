@@ -120,7 +120,7 @@ class Sem_depDataset():
         sem = self.pil_to_tensor(sem)[0,:,:]
         depth= (self.pil_to_tensor(depth).float() / 255 - 0.5) / 0.5
 
-        depth = depth.expand(3, -1, -1)
+        depth = depth.expand(3, -1, -1)  #
         input_label = torch.zeros(152, self.image_size, self.image_size)
         sem = input_label.scatter_(0, sem.long().unsqueeze(0), 1.0)
 

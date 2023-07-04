@@ -19,11 +19,12 @@ class GroundingNetInput:
         sem=batch['sem']
         mask=batch['mask']
         depth=batch['depth']
-        self.batch, self.C, self.H, self.W = sem.shape
+        self.batch, self.sem_C, self.sem_H, self.sem_W = sem.shape
+        self.batch, self.dep_C, self.dep_H, self.dep_W = depth.shape
         self.device = sem.device
         self.dtype = sem.dtype
 
-        return {'depth': depth,"sem":sem, "mask":mask}
+        return {"sem":sem, 'depth': depth,"mask":mask}
 
 
     def get_null_input(self, batch=None, device=None, dtype=None):
@@ -37,11 +38,11 @@ class GroundingNetInput:
         device = self.device if device is None else device
         dtype = self.dtype   if dtype  is None else dtype
 
-        depth = th.zeros(self.batch, self.C, self.H, self.W).type(dtype).to(device)
-        sem = th.zeros(self.batch, self.C, self.H, self.W).type(dtype).to(device)
+        sem = th.zeros(self.batch, self.sem_C, self.sem_H, self.sem_W).type(dtype).to(device)
+        depth = th.zeros(self.batch, self.dep_C, self.dep_H, self.dep_W).type(dtype).to(device)
         mask = th.zeros(batch).type(dtype).to(device)
 
-        return {"depth":depth, "sem":sem, "mask":mask}
+        return {"sem":sem, "depth":depth,  "mask":mask}
 
 
 

@@ -239,7 +239,7 @@ class UNetModel(nn.Module):
         self,
         image_size,
         in_channels,
-        model_channels,
+        model_channels,  # 320
         out_channels,
         num_res_blocks,
         attention_resolutions,
@@ -263,7 +263,7 @@ class UNetModel(nn.Module):
         self.in_channels = in_channels
         self.model_channels = model_channels
         self.out_channels = out_channels
-        self.num_res_blocks = num_res_blocks
+        self.num_res_blocks = num_res_blocks  # 2
         self.attention_resolutions = attention_resolutions
         self.dropout = dropout
         self.channel_mult = channel_mult
@@ -307,13 +307,13 @@ class UNetModel(nn.Module):
 
 
         input_block_chans = [model_channels]
-        ch = model_channels
+        ch = model_channels  # 320
         ds = 1
         
         # = = = = = = = = = = = = = = = = = = = = Down Branch = = = = = = = = = = = = = = = = = = = = #
-        for level, mult in enumerate(channel_mult):
-            for _ in range(num_res_blocks):
-                layers = [ ResBlock(ch,
+        for level, mult in enumerate(channel_mult):  # [ 1, 2, 4, 4 ]
+            for _ in range(num_res_blocks):  #2
+                layers = [ ResBlock(ch,  # 320
                                     time_embed_dim,
                                     dropout,
                                     out_channels=mult * model_channels,
@@ -321,7 +321,7 @@ class UNetModel(nn.Module):
                                     use_checkpoint=use_checkpoint,
                                     use_scale_shift_norm=use_scale_shift_norm,) ]
 
-                ch = mult * model_channels
+                ch = mult * model_channels  # x320
                 if ds in attention_resolutions:  # [ 4, 2, 1 ]
                     dim_head = ch // num_heads
                     layers.append(SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head,
@@ -442,6 +442,7 @@ class UNetModel(nn.Module):
         # Grounding tokens: B*N*C 2x64x768
         sem_objs = self.sem_position_net( **grounding_input )
         dep_objs=self.dep_position_net(**grounding_input)
+        objs=(sem_objs,dep_objs)
         # Time embedding 
         t_emb = timestep_embedding(input["timesteps"], self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)  #2x1280
@@ -449,9 +450,10 @@ class UNetModel(nn.Module):
         # input tensor  
         h = input["x"]  #2x4x64x64
         if self.dep_downsample_net != None and self.first_conv_type=="GLIGEN":
-            dep_temp  = self.dep_downsample_net(input["grounding_extra_input"])# 2x8x64x64
             sem_temp  = self.sem_downsample_net(input["grounding_extra_input"])
-            h = th.cat( [h,dep_temp], dim=1 )
+            dep_temp  = self.dep_downsample_net(input["grounding_extra_input"])# 2x8x64x64
+            temp=sem_temp
+            h = th.cat( [h,temp], dim=1 )
         if self.inpaint_mode:
             if self.downsample_net != None:
                 breakpoint() # TODO: think about this case 
@@ -463,14 +465,14 @@ class UNetModel(nn.Module):
         # Start forwarding 
         hs = []
         for module in self.input_blocks:
-            h = module(h, emb, context, sem_objs)
+            h = module(h, emb, context, objs)
             hs.append(h)
 
-        h = self.middle_block(h, emb, context, sem_objs)
+        h = self.middle_block(h, emb, context, objs)
 
         for module in self.output_blocks:
             h = th.cat([h, hs.pop()], dim=1)
-            h = module(h, emb, context, sem_objs)
+            h = module(h, emb, context, objs)
 
         return self.out(h)
 
