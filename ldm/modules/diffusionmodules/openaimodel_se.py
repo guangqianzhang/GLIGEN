@@ -292,8 +292,9 @@ class UNetModel(nn.Module):
         self.first_conv_type = "SD"
         self.first_conv_restorable = True 
         if grounding_downsampler is not None:
-            self.downsample_net = instantiate_from_config(grounding_downsampler)  
-            self.additional_channel_from_downsampler = self.downsample_net.out_dim
+            self.sem_downsample_net = instantiate_from_config(grounding_downsampler['sem'])
+            self.dep_downsample_net = instantiate_from_config(grounding_downsampler['depth'])
+            self.additional_channel_from_downsampler = self.sem_downsample_net.out_dim
             self.first_conv_type = "GLIGEN"
 
         if inpaint_mode:
@@ -394,7 +395,8 @@ class UNetModel(nn.Module):
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
 
-        self.position_net = instantiate_from_config(grounding_tokenizer) 
+        self.sem_position_net = instantiate_from_config(grounding_tokenizer['sem'])
+        self.dep_position_net = instantiate_from_config(grounding_tokenizer['depth'])
         
 
     def restore_first_conv_from_SD(self):
@@ -429,8 +431,10 @@ class UNetModel(nn.Module):
             grounding_input = self.grounding_tokenizer_input.get_null_input()
 
 
-        # Grounding tokens: B*N*C
-        objs = self.position_net( **grounding_input )  
+        # Grounding tokens: B*N*C 2x64x768
+        sem_objs = self.sem_position_net( **grounding_input )
+        dep_objs = self.dep_position_net(**grounding_input)
+        objs=sem_objs
         
         # Time embedding 
         t_emb = timestep_embedding(input["timesteps"], self.model_channels, repeat_only=False)
@@ -438,8 +442,10 @@ class UNetModel(nn.Module):
 
         # input tensor  
         h = input["x"]
-        if self.downsample_net != None and self.first_conv_type=="GLIGEN":
-            temp  = self.downsample_net(input["grounding_extra_input"])
+        if self.sem_downsample_net != None and self.first_conv_type=="GLIGEN":
+            sem_temp  = self.sem_downsample_net(input["grounding_extra_input"])
+            dep_temp  = self.dep_downsample_net(input["grounding_extra_input"])# 2x8x64x64
+            temp=sem_temp
             h = th.cat( [h,temp], dim=1 )
         if self.inpaint_mode:
             if self.downsample_net != None:

@@ -362,7 +362,7 @@ class Trainer:
                     inpainting_extra_input=inpainting_extra_input,
                     grounding_extra_input=grounding_extra_input,
                     grounding_input=grounding_input)
-        model_output = self.model(input)
+        model_output = self.model(input)  #2x4x64x64
         
         loss = torch.nn.functional.mse_loss(model_output, noise) * self.l_simple_weight
 

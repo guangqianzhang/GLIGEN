@@ -133,6 +133,16 @@ class DatasetCatalog:
                 caption_path = os.path.join(ROOT,'ADE/ade_train_images_cation.json'),
             ),
         }
+        # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - #
+        self.Sem_Depth={
+            "target": "dataset.dataset_sem_dep.Sem_depDataset",
+            "train_params": dict(
+                image_rootdir='/home/cqjtu/Documents/dataset/gligen/test/img',
+                depth_rootdir='/home/cqjtu/Documents/dataset/gligen/test/dep',
+                sem_rootdir='/home/cqjtu/Documents/dataset/gligen/test/seg',
+                caption_path='/home/cqjtu/Documents/dataset/gligen/test/test_caption.json'
+            ),
+        }
 
 
 
