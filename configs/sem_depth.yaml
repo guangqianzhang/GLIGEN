@@ -61,7 +61,7 @@ autoencoder:
 
 
 text_encoder:
-  target: ldm.modules.encoders.modules.FrozenCLIPEmbedder
+  target: ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder
 
 
 

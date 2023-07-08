@@ -7,6 +7,7 @@ import random
 import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
 
 from ldm.modules.diffusionmodules.util import (
     conv_nd,
@@ -21,6 +22,7 @@ from ldm.modules.attention import SpatialTransformer
 from torch.utils import checkpoint
 from ldm.util import instantiate_from_config
 from copy import deepcopy
+
 
 class TimestepBlock(nn.Module):
     """
@@ -82,8 +84,6 @@ class Upsample(nn.Module):
         return x
 
 
-
-
 class Downsample(nn.Module):
     """
     A downsampling layer with an optional convolution.
@@ -93,7 +93,7 @@ class Downsample(nn.Module):
                  downsampling occurs in the inner-two dimensions.
     """
 
-    def __init__(self, channels, use_conv, dims=2, out_channels=None,padding=1):
+    def __init__(self, channels, use_conv, dims=2, out_channels=None, padding=1):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
@@ -130,17 +130,17 @@ class ResBlock(TimestepBlock):
     """
 
     def __init__(
-        self,
-        channels,
-        emb_channels,
-        dropout,
-        out_channels=None,
-        use_conv=False,
-        use_scale_shift_norm=False,
-        dims=2,
-        use_checkpoint=False,
-        up=False,
-        down=False,
+            self,
+            channels,
+            emb_channels,
+            dropout,
+            out_channels=None,
+            use_conv=False,
+            use_scale_shift_norm=False,
+            dims=2,
+            use_checkpoint=False,
+            up=False,
+            down=False,
     ):
         super().__init__()
         self.channels = channels
@@ -204,10 +204,9 @@ class ResBlock(TimestepBlock):
         #     self._forward, (x, emb), self.parameters(), self.use_checkpoint
         # )
         if self.use_checkpoint and x.requires_grad:
-            return checkpoint.checkpoint(self._forward, x, emb )
+            return checkpoint.checkpoint(self._forward, x, emb)
         else:
-            return self._forward(x, emb) 
-
+            return self._forward(x, emb)
 
     def _forward(self, x, emb):
         if self.updown:
@@ -232,33 +231,31 @@ class ResBlock(TimestepBlock):
         return self.skip_connection(x) + h
 
 
-
-
 class UNetModel(nn.Module):
     def __init__(
-        self,
-        image_size,
-        in_channels,
-        model_channels,
-        out_channels,
-        num_res_blocks,
-        attention_resolutions,
-        dropout=0,
-        channel_mult=(1, 2, 4, 8),
-        conv_resample=True,
-        dims=2,
-        use_checkpoint=False,
-        num_heads=8,
-        use_scale_shift_norm=False,
-        transformer_depth=1,           
-        context_dim=None,  
-        fuser_type = None,
-        inpaint_mode = False,
-        grounding_downsampler = None,
-        grounding_tokenizer = None,
+            self,
+            image_size,
+            in_channels,
+            model_channels,
+            out_channels,
+            num_res_blocks,
+            attention_resolutions,
+            dropout=0,
+            channel_mult=(1, 2, 4, 8),
+            conv_resample=True,
+            dims=2,
+            use_checkpoint=False,
+            num_heads=8,
+            use_scale_shift_norm=False,
+            transformer_depth=1,
+            context_dim=None,
+            fuser_type=None,
+            inpaint_mode=False,
+            grounding_downsampler=None,
+            grounding_tokenizer=None,
     ):
         super().__init__()
-        
+
         self.image_size = image_size
         self.in_channels = in_channels
         self.model_channels = model_channels
@@ -273,10 +270,9 @@ class UNetModel(nn.Module):
         self.context_dim = context_dim
         self.fuser_type = fuser_type
         self.inpaint_mode = inpaint_mode
-        assert fuser_type in ["gatedSA","gatedSA2","gatedCA"]
+        assert fuser_type in ["gatedSA", "gatedSA2", "gatedCA"]
 
-        self.grounding_tokenizer_input = None # set externally 
-
+        self.grounding_tokenizer_input = None  # set externally
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -285,52 +281,52 @@ class UNetModel(nn.Module):
             linear(time_embed_dim, time_embed_dim),
         )
 
-
-
-        self.downsample_net = None 
+        self.downsample_net = None
         self.additional_channel_from_downsampler = 0
         self.first_conv_type = "SD"
-        self.first_conv_restorable = True 
+        self.first_conv_restorable = True
         if grounding_downsampler is not None:
-            self.downsample_net = instantiate_from_config(grounding_downsampler)  
+            self.downsample_net = instantiate_from_config(grounding_downsampler)
             self.additional_channel_from_downsampler = self.downsample_net.out_dim
             self.first_conv_type = "GLIGEN"
 
         if inpaint_mode:
             # The new added channels are: masked image (encoded image) and mask, which is 4+1
-            in_c = in_channels+self.additional_channel_from_downsampler+in_channels+1
-            self.first_conv_restorable = False # in inpaint; You must use extra channels to take in masked real image  
+            in_c = in_channels + self.additional_channel_from_downsampler + in_channels + 1
+            self.first_conv_restorable = False  # in inpaint; You must use extra channels to take in masked real image
         else:
-            in_c = in_channels+self.additional_channel_from_downsampler
+            in_c = in_channels + self.additional_channel_from_downsampler
         self.input_blocks = nn.ModuleList([TimestepEmbedSequential(conv_nd(dims, in_c, model_channels, 3, padding=1))])
-
 
         input_block_chans = [model_channels]
         ch = model_channels
         ds = 1
-        
+
         # = = = = = = = = = = = = = = = = = = = = Down Branch = = = = = = = = = = = = = = = = = = = = #
         for level, mult in enumerate(channel_mult):
             for _ in range(num_res_blocks):
-                layers = [ ResBlock(ch,
-                                    time_embed_dim,
-                                    dropout,
-                                    out_channels=mult * model_channels,
-                                    dims=dims,
-                                    use_checkpoint=use_checkpoint,
-                                    use_scale_shift_norm=use_scale_shift_norm,) ]
+                layers = [ResBlock(ch,
+                                   time_embed_dim,
+                                   dropout,
+                                   out_channels=mult * model_channels,
+                                   dims=dims,
+                                   use_checkpoint=use_checkpoint,
+                                   use_scale_shift_norm=use_scale_shift_norm, )]
 
                 ch = mult * model_channels
                 if ds in attention_resolutions:
                     dim_head = ch // num_heads
-                    layers.append(SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint))
-                
+                    layers.append(SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads,
+                                                     d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type,
+                                                     use_checkpoint=use_checkpoint))
+
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 input_block_chans.append(ch)
 
-            if level != len(channel_mult) - 1: # will not go to this downsample branch in the last feature
+            if level != len(channel_mult) - 1:  # will not go to this downsample branch in the last feature
                 out_ch = ch
-                self.input_blocks.append( TimestepEmbedSequential( Downsample(ch, conv_resample, dims=dims, out_channels=out_ch ) ) )
+                self.input_blocks.append(
+                    TimestepEmbedSequential(Downsample(ch, conv_resample, dims=dims, out_channels=out_ch)))
                 ch = out_ch
                 input_block_chans.append(ch)
                 ds *= 2
@@ -338,9 +334,8 @@ class UNetModel(nn.Module):
 
         # self.input_blocks = [ C |  RT  RT  D  |  RT  RT  D  |  RT  RT  D  |   R  R   ]
 
-
         # = = = = = = = = = = = = = = = = = = = = BottleNeck = = = = = = = = = = = = = = = = = = = = #
-        
+
         self.middle_block = TimestepEmbedSequential(
             ResBlock(ch,
                      time_embed_dim,
@@ -348,7 +343,8 @@ class UNetModel(nn.Module):
                      dims=dims,
                      use_checkpoint=use_checkpoint,
                      use_scale_shift_norm=use_scale_shift_norm),
-            SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint),
+            SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head,
+                               depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint),
             ResBlock(ch,
                      time_embed_dim,
                      dropout,
@@ -356,37 +352,34 @@ class UNetModel(nn.Module):
                      use_checkpoint=use_checkpoint,
                      use_scale_shift_norm=use_scale_shift_norm))
 
-
-
         # = = = = = = = = = = = = = = = = = = = = Up Branch = = = = = = = = = = = = = = = = = = = = #
 
-        
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(channel_mult))[::-1]:
             for i in range(num_res_blocks + 1):
                 ich = input_block_chans.pop()
-                layers = [ ResBlock(ch + ich,
-                                    time_embed_dim,
-                                    dropout,
-                                    out_channels=model_channels * mult,
-                                    dims=dims,
-                                    use_checkpoint=use_checkpoint,
-                                    use_scale_shift_norm=use_scale_shift_norm) ]
+                layers = [ResBlock(ch + ich,
+                                   time_embed_dim,
+                                   dropout,
+                                   out_channels=model_channels * mult,
+                                   dims=dims,
+                                   use_checkpoint=use_checkpoint,
+                                   use_scale_shift_norm=use_scale_shift_norm)]
                 ch = model_channels * mult
-                
+
                 if ds in attention_resolutions:
                     dim_head = ch // num_heads
-                    layers.append( SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint) )
+                    layers.append(SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads,
+                                                     d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type,
+                                                     use_checkpoint=use_checkpoint))
                 if level and i == num_res_blocks:
                     out_ch = ch
-                    layers.append( Upsample(ch, conv_resample, dims=dims, out_channels=out_ch) )
+                    layers.append(Upsample(ch, conv_resample, dims=dims, out_channels=out_ch))
                     ds //= 2
-                
+
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
 
-
         # self.output_blocks = [ R  R  RU | RT  RT  RTU |  RT  RT  RTU  |  RT  RT  RT  ]
-
 
         self.out = nn.Sequential(
             normalization(ch),
@@ -394,8 +387,7 @@ class UNetModel(nn.Module):
             zero_module(conv_nd(dims, model_channels, out_channels, 3, padding=1)),
         )
 
-        self.position_net = instantiate_from_config(grounding_tokenizer) 
-        
+        self.position_net = instantiate_from_config(grounding_tokenizer)
 
     def restore_first_conv_from_SD(self):
         if self.first_conv_restorable:
@@ -410,26 +402,25 @@ class UNetModel(nn.Module):
 
             self.first_conv_type = "SD"
         else:
-            print("First conv layer is not restorable and skipped this process, probably because this is an inpainting model?")
-
+            print(
+                "First conv layer is not restorable and skipped this process, probably because this is an inpainting model?")
 
     def restore_first_conv_from_GLIGEN(self):
-        breakpoint() # TODO 
-
+        breakpoint()  # TODO
 
     def forward(self, input):
 
-        if ("grounding_input" in input):
+        if "grounding_input" in input:
             grounding_input = input["grounding_input"]
-        else: 
+        else:
             # Guidance null case
             grounding_input = self.grounding_tokenizer_input.get_null_input()
-        if self.training and random.random() < 0.1 and self.grounding_tokenizer_input.set: # random drop for guidance  
+        if self.training and random.random() < 0.1 and self.grounding_tokenizer_input.set:  # random drop for guidance
             grounding_input = self.grounding_tokenizer_input.get_null_input()
 
-
         # Grounding tokens: B*N*C
-        objs = self.position_net( **grounding_input )
+        objs: tuple[Tensor] = self.position_net(grounding_input['sem'], grounding_input['depth'],
+                                                grounding_input['mask'])
         # objs=objs[0]
         # Time embedding 
         t_emb = timestep_embedding(input["timesteps"], self.model_channels, repeat_only=False)
@@ -437,15 +428,19 @@ class UNetModel(nn.Module):
 
         # input tensor  
         h = input["x"]
-        if self.downsample_net != None and self.first_conv_type=="GLIGEN":
-            temp  = self.downsample_net(input["grounding_extra_input"])
-            temp=temp[0]
-            h = th.cat( [h,temp], dim=1 )  # c:4+8=16
+        if self.downsample_net is not None and self.first_conv_type == "GLIGEN":
+            temp = self.downsample_net(input["grounding_extra_input"])
+            # if isinstance(temp,tuple):
+            #     temp=temp[0]+temp[1]
+            # else:
+            #     temp=temp
+            temp = temp[0] + temp[1]
+            h = th.cat([h, temp], dim=1)  # c:4+8=16
         if self.inpaint_mode:
-            if self.downsample_net != None:
-                breakpoint() # TODO: think about this case 
-            h = th.cat( [h, input["inpainting_extra_input"]], dim=1 )
-        
+            if self.downsample_net is not None:
+                breakpoint()  # TODO: think about this case
+            h = th.cat([h, input["inpainting_extra_input"]], dim=1)
+
         # Text input 
         context = input["context"]
 
@@ -462,13 +457,3 @@ class UNetModel(nn.Module):
             h = module(h, emb, context, objs)  # 2x1280x16x16 640  640  640 320 320 320
             # 2x320x64x64
         return self.out(h)
-
-
-
-
-
-
-
-
-
-

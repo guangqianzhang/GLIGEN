@@ -89,7 +89,7 @@ class LinearAttention(nn.Module):
         b, c, h, w = x.shape
         qkv = self.to_qkv(x)
         q, k, v = rearrange(qkv, 'b (qkv heads c) h w -> qkv b heads c (h w)', heads = self.heads, qkv=3)
-        k = k.softmax(dim=-1)  
+        k = k.softmax(dim=-1)
         context = torch.einsum('bhdn,bhen->bhde', k, v)
         out = torch.einsum('bhde,bhdn->bhen', context, q)
         out = rearrange(out, 'b heads c (h w) -> b (heads c) h w', heads=self.heads, h=h, w=w)
@@ -121,7 +121,7 @@ class CrossAttention(nn.Module):
             mask = mask.unsqueeze(1).repeat(1,self.heads,1).reshape(B*self.heads,1,-1)
             max_neg_value = -torch.finfo(sim.dtype).max
             sim.masked_fill_(~mask, max_neg_value)
-        return sim 
+        return sim
 
 
     def forward(self, x, key, value, mask=None):
@@ -129,11 +129,11 @@ class CrossAttention(nn.Module):
         q = self.to_q(x)     # B*N*(H*C)
         k = self.to_k(key)   # B*M*(H*C)
         v = self.to_v(value) # B*M*(H*C)
-   
-        B, N, HC = q.shape 
+
+        B, N, HC = q.shape
         _, M, _ = key.shape
         H = self.heads
-        C = HC // H 
+        C = HC // H
 
         q = q.view(B,N,H,C).permute(0,2,1,3).reshape(B*H,N,C) # (B*H)*N*C
         k = k.view(B,M,H,C).permute(0,2,1,3).reshape(B*H,M,C) # (B*H)*M*C
@@ -169,9 +169,9 @@ class SelfAttention(nn.Module):
         k = self.to_k(x) # B*N*(H*C)
         v = self.to_v(x) # B*N*(H*C)
 
-        B, N, HC = q.shape 
+        B, N, HC = q.shape
         H = self.heads
-        C = HC // H 
+        C = HC // H
 
         q = q.view(B,N,H,C).permute(0,2,1,3).reshape(B*H,N,C) # (B*H)*N*C
         k = k.view(B,N,H,C).permute(0,2,1,3).reshape(B*H,N,C) # (B*H)*N*C
@@ -190,8 +190,8 @@ class SelfAttention(nn.Module):
 class GatedCrossAttentionDense(nn.Module):
     def __init__(self, query_dim, key_dim, value_dim, n_heads, d_head):
         super().__init__()
-        
-        self.attn = CrossAttention(query_dim=query_dim, key_dim=key_dim, value_dim=value_dim, heads=n_heads, dim_head=d_head) 
+
+        self.attn = CrossAttention(query_dim=query_dim, key_dim=key_dim, value_dim=value_dim, heads=n_heads, dim_head=d_head)
         self.ff = FeedForward(query_dim, glu=True)
 
         self.norm1 = nn.LayerNorm(query_dim)
@@ -202,20 +202,20 @@ class GatedCrossAttentionDense(nn.Module):
 
         # this can be useful: we can externally change magnitude of tanh(alpha)
         # for example, when it is set to 0, then the entire model is same as original one 
-        self.scale = 1  
+        self.scale = 1
 
     def forward(self, x, objs):
 
-        x = x + self.scale*torch.tanh(self.alpha_attn) * self.attn( self.norm1(x), objs, objs)  
-        x = x + self.scale*torch.tanh(self.alpha_dense) * self.ff( self.norm2(x) ) 
-        
-        return x 
+        x = x + self.scale*torch.tanh(self.alpha_attn) * self.attn( self.norm1(x), objs, objs)
+        x = x + self.scale*torch.tanh(self.alpha_dense) * self.ff( self.norm2(x) )
+
+        return x
 
 
 class GatedSelfAttentionDense(nn.Module):
     def __init__(self, query_dim, context_dim,  n_heads, d_head):
         super().__init__()
-        
+
         # we need a linear projection since we need cat visual feature and obj feature
         self.linear = nn.Linear(context_dim, query_dim)
 
@@ -230,7 +230,7 @@ class GatedSelfAttentionDense(nn.Module):
 
         # this can be useful: we can externally change magnitude of tanh(alpha)
         # for example, when it is set to 0, then the entire model is same as original one 
-        self.scale = 1  
+        self.scale = 1
 
 
     def forward(self, x, objs):
@@ -239,9 +239,9 @@ class GatedSelfAttentionDense(nn.Module):
         objs = self.linear(objs)
 
         x = x + self.scale*torch.tanh(self.alpha_attn) * self.attn(  self.norm1(torch.cat([x,objs],dim=1))  )[:,0:N_visual,:]
-        x = x + self.scale*torch.tanh(self.alpha_dense) * self.ff( self.norm2(x) )  
-        
-        return x 
+        x = x + self.scale*torch.tanh(self.alpha_dense) * self.ff( self.norm2(x) )
+
+        return x
 
 
 
@@ -251,7 +251,7 @@ class GatedSelfAttentionDense(nn.Module):
 class GatedSelfAttentionDense2(nn.Module):
     def __init__(self, query_dim, context_dim,  n_heads, d_head):
         super().__init__()
-        
+
         # we need a linear projection since we need cat visual feature and obj feature
         self.linear = nn.Linear(context_dim, query_dim)
 
@@ -266,7 +266,7 @@ class GatedSelfAttentionDense2(nn.Module):
 
         # this can be useful: we can externally change magnitude of tanh(alpha)
         # for example, when it is set to 0, then the entire model is same as original one 
-        self.scale = 1  
+        self.scale = 1
 
 
     def forward(self, x, objs):
@@ -275,7 +275,7 @@ class GatedSelfAttentionDense2(nn.Module):
         B, N_ground, _ = objs.shape
 
         objs = self.linear(objs)
-        
+
         # sanity check 
         size_v = math.sqrt(N_visual)
         size_g = math.sqrt(N_ground)
@@ -289,12 +289,12 @@ class GatedSelfAttentionDense2(nn.Module):
         out = out.permute(0,2,1).reshape( B,-1,size_g,size_g )
         out = torch.nn.functional.interpolate(out, (size_v,size_v), mode='bicubic')
         residual = out.reshape(B,-1,N_visual).permute(0,2,1)
-        
+
         # add residual to visual feature 
         x = x + self.scale*torch.tanh(self.alpha_attn) * residual
-        x = x + self.scale*torch.tanh(self.alpha_dense) * self.ff( self.norm2(x) )  
-        
-        return x 
+        x = x + self.scale*torch.tanh(self.alpha_dense) * self.ff( self.norm2(x) )
+
+        return x
 
 
 
@@ -303,9 +303,9 @@ class GatedSelfAttentionDense2(nn.Module):
 class BasicTransformerBlock(nn.Module):
     def __init__(self, query_dim, key_dim, value_dim, n_heads, d_head, fuser_type, use_checkpoint=True):
         super().__init__()
-        self.attn1 = SelfAttention(query_dim=query_dim, heads=n_heads, dim_head=d_head)  
+        self.attn1 = SelfAttention(query_dim=query_dim, heads=n_heads, dim_head=d_head)
         self.ff = FeedForward(query_dim, glu=True)
-        self.attn2 = CrossAttention(query_dim=query_dim, key_dim=key_dim, value_dim=value_dim, heads=n_heads, dim_head=d_head)  
+        self.attn2 = CrossAttention(query_dim=query_dim, key_dim=key_dim, value_dim=value_dim, heads=n_heads, dim_head=d_head)
         self.norm1 = nn.LayerNorm(query_dim)
         self.norm2 = nn.LayerNorm(query_dim)
         self.norm3 = nn.LayerNorm(query_dim)
@@ -313,29 +313,43 @@ class BasicTransformerBlock(nn.Module):
 
         if fuser_type == "gatedSA":
             # note key_dim here actually is context_dim
-            self.fuser = GatedSelfAttentionDense(query_dim, key_dim, n_heads, d_head) 
+            self.fuser = GatedSelfAttentionDense(query_dim, key_dim, n_heads, d_head)
         elif fuser_type == "gatedSA2":
             # note key_dim here actually is context_dim
-            self.fuser = GatedSelfAttentionDense2(query_dim, key_dim, n_heads, d_head) 
+            self.fuser = GatedSelfAttentionDense2(query_dim, key_dim, n_heads, d_head)
         elif fuser_type == "gatedCA":
-            self.fuser = GatedCrossAttentionDense(query_dim, key_dim, value_dim, n_heads, d_head) 
+            self.fuser = GatedCrossAttentionDense(query_dim, key_dim, value_dim, n_heads, d_head)
         else:
-            assert False 
+            assert False
 
 
     def forward(self, x, context, objs):
         # objs=objs[0]
-#        return checkpoint(self._forward, (x, context, objs), self.parameters(), self.use_checkpoint)
-        if self.use_checkpoint and x.requires_grad:
-            return checkpoint.checkpoint(self._forward, x, context, objs[0],objs[1])
+        if isinstance(objs,tuple):
+    #        return checkpoint(self._forward, (x, context, objs), self.parameters(), self.use_checkpoint)
+            if self.use_checkpoint and x.requires_grad:
+                return checkpoint.checkpoint(self._sd_forward, x, context, objs[0],objs[1])
+            else:
+                return self._sd_forward(x, context, objs[0],objs[1])
         else:
-            return self._forward(x, context, objs[0],objs[1])
+            if self.use_checkpoint and x.requires_grad:
+                return checkpoint.checkpoint(self._forward, x, context, objs)
+            else:
+                return self._forward(x, context, objs)
 
-    def _forward(self, x, context, objs0,objs1):
-        x = self.attn1( self.norm1(x) ) + x 
-        x = self.fuser(x, objs0) # identity mapping in the beginning
+
+    def _forward(self, x, context, obj):
+        x = self.attn1(self.norm1(x)) + x
+        x = self.fuser(x, obj)  # identity mapping in the beginning
         x = self.attn2(self.norm2(x), context, context) + x
-        x = self.fuser(x, objs1)  # identity mapping in the beginning
+        x = self.ff(self.norm3(x)) + x
+        return x
+
+    def _sd_forward(self, x, context, sem_objs,dep_objs):
+        x = self.attn1( self.norm1(x) ) + x
+        x = self.fuser(x, sem_objs) # identity mapping in the beginning
+        x = self.attn2(self.norm2(x), context, context) + x
+        x = self.fuser(x, dep_objs)  # identity mapping in the beginning
         x = self.attn2(self.norm2(x), context, context) + x
         x = self.ff(self.norm3(x)) + x
         return x
@@ -348,7 +362,7 @@ class SpatialTransformer(nn.Module):
         query_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
 
-        
+
         self.proj_in = nn.Conv2d(in_channels,
                                  query_dim,
                                  kernel_size=1,
