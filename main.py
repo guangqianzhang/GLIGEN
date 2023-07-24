@@ -29,7 +29,8 @@ if __name__ == "__main__":
     parser.add_argument("--scheduler_type", type=str,  default='constant', help="cosine or constant")
     parser.add_argument("--batch_size", type=int,  default=2, help="")
     parser.add_argument("--workers", type=int,  default=1, help="")
-    parser.add_argument("--official_ckpt_name", type=str,  default="/home/cqjtu/PycharmProjects/GLIGEN/DATA/sd-v1-4.ckpt", help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
+    parser.add_argument("--official_ckpt_name", type=str,
+                        default="/home/cqjtu/PycharmProjects/stablediffusion/checkpoints/v2-1_768-ema-pruned.ckpt", help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
     parser.add_argument("--ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None,  default=None, 
         help=("If given, then it will start training from this ckpt"
               "It has higher prioty than official_ckpt_name, but lower than the ckpt found in autoresuming (see trainer.py) "

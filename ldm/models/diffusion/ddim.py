@@ -3,7 +3,7 @@ import numpy as np
 from tqdm import tqdm
 from functools import partial
 
-from ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters, make_ddim_timesteps, noise_like
+from ldm.modules.diffusionmodules.util import make_ddim_sampling_parameters, make_ddim_timesteps, noise_like,extract_into_tensor
 
 
 class DDIMSampler(object):
@@ -24,9 +24,9 @@ class DDIMSampler(object):
         setattr(self, name, attr)
 
 
-    def make_schedule(self, ddim_num_steps, ddim_discretize="uniform", ddim_eta=0.):
+    def make_schedule(self, ddim_num_steps, ddim_discretize="uniform", ddim_eta=0., verbose=False):
         self.ddim_timesteps = make_ddim_timesteps(ddim_discr_method=ddim_discretize, num_ddim_timesteps=ddim_num_steps,
-                                                  num_ddpm_timesteps=self.ddpm_num_timesteps,verbose=False)
+                                                  num_ddpm_timesteps=self.ddpm_num_timesteps,verbose=verbose)
         alphas_cumprod = self.diffusion.alphas_cumprod
         assert alphas_cumprod.shape[0] == self.ddpm_num_timesteps, 'alphas have to be defined for each timestep'
         to_torch = lambda x: x.clone().detach().to(torch.float32).to(self.device)
@@ -45,7 +45,7 @@ class DDIMSampler(object):
         # ddim sampling parameters
         ddim_sigmas, ddim_alphas, ddim_alphas_prev = make_ddim_sampling_parameters(alphacums=alphas_cumprod.cpu(),
                                                                                    ddim_timesteps=self.ddim_timesteps,
-                                                                                   eta=ddim_eta,verbose=False)
+                                                                                   eta=ddim_eta,verbose=verbose)
         self.register_buffer('ddim_sigmas', ddim_sigmas)
         self.register_buffer('ddim_alphas', ddim_alphas)
         self.register_buffer('ddim_alphas_prev', ddim_alphas_prev)
@@ -57,8 +57,8 @@ class DDIMSampler(object):
 
 
     @torch.no_grad()
-    def sample(self, S, shape, input, uc=None, guidance_scale=1, mask=None, x0=None):
-        self.make_schedule(ddim_num_steps=S)
+    def sample(self, S, shape, input, uc=None, guidance_scale=1, mask=None, x0=None,ddim_eta=0.):
+        self.make_schedule(ddim_num_steps=S,ddim_eta=ddim_eta)
         return self.ddim_sampling(shape, input, uc, guidance_scale,  mask=mask, x0=x0)
  
 
@@ -132,3 +132,22 @@ class DDIMSampler(object):
         x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
 
         return x_prev, pred_x0
+
+
+
+    @torch.no_grad()
+    def stochastic_encode(self, x0, t, use_original_steps=False, noise=None):
+        # fast, but does not allow for exact reconstruction
+        # t serves as an index to gather the correct alphas
+        if use_original_steps:
+            sqrt_alphas_cumprod = self.sqrt_alphas_cumprod
+            sqrt_one_minus_alphas_cumprod = self.sqrt_one_minus_alphas_cumprod
+        else:
+            sqrt_alphas_cumprod = torch.sqrt(self.ddim_alphas)
+            sqrt_one_minus_alphas_cumprod = self.ddim_sqrt_one_minus_alphas
+
+        if noise is None:
+            noise = torch.randn_like(x0)
+        return (extract_into_tensor(sqrt_alphas_cumprod, t, x0.shape) * x0 +
+                extract_into_tensor(sqrt_one_minus_alphas_cumprod, t, x0.shape) * noise)
+

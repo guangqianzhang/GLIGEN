@@ -1,6 +1,9 @@
 import threading
 
 import torch
+from PIL import Image
+from torchvision import transforms
+
 from ldm.models.diffusion.ddim import DDIMSampler
 from ldm.models.diffusion.plms import PLMSSampler
 from ldm.util import instantiate_from_config
@@ -23,6 +26,7 @@ from transformers import get_cosine_schedule_with_warmup, get_constant_schedule_
 from copy import deepcopy
 from inpaint_mask_func import draw_masks_from_boxes
 from ldm.modules.attention import BasicTransformerBlock
+from scrpits.utils import prepare_batch_sem_depth
 
 try:
     from apex import amp
@@ -51,7 +55,7 @@ class ImageCaptionSaver:
         torchvision.utils.save_image(real, save_path, nrow=self.nrow)
 
         if masked_real is not None:
-            # only inpaiting mode case 
+            # only inpaiting mode case
             save_path = os.path.join(self.base_path, str(seen).zfill(8) + '_mased_real.png')
             torchvision.utils.save_image(masked_real, save_path, nrow=self.nrow, normalize=self.normalize,
                                          scale_each=self.scale_each, range=self.range)
@@ -98,7 +102,7 @@ def batch_to_device(batch, device):
 
 
 def sub_batch(batch, num=1):
-    # choose first num in given batch 
+    # choose first num in given batch
     num = num if num > 1 else 1
     for k in batch:
         batch[k] = batch[k][0:num]
@@ -107,7 +111,7 @@ def sub_batch(batch, num=1):
 
 def wrap_loader(loader):
     while True:
-        for batch in loader:  # TODO: it seems each time you have the same order for all epoch?? 
+        for batch in loader:  # TODO: it seems each time you have the same order for all epoch??
             yield batch
 
 
@@ -159,8 +163,8 @@ def create_expt_folder_with_auto_resuming(OUTPUT_ROOT, name):
 
 
 # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = #
-# = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = # 
-# = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = # 
+# = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = #
+# = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = #
 
 
 class Trainer:
@@ -192,7 +196,7 @@ class Trainer:
         add_additional_channels(state_dict["model"], additional_channels)
         self.input_conv_train = True if additional_channels > 0 else False
 
-        # load original SD ckpt (with inuput conv may be modified) 
+        # load original SD ckpt (with inuput conv may be modified)
         missing_keys, unexpected_keys = self.model.load_state_dict(state_dict["model"], strict=False)
         assert unexpected_keys == []
         original_params_names = list(state_dict["model"].keys())  # used for sanity check later
@@ -217,25 +221,25 @@ class Trainer:
         all_params_name = []
         for name, p in self.model.named_parameters():
             if ("transformer_blocks" in name) and ("fuser" in name):
-                # New added Attention layers 
+                # New added Attention layers
                 params.append(p)
                 trainable_names.append(name)
             elif "position_net" in name:
-                # Grounding token processing network 
+                # Grounding token processing network
                 params.append(p)
                 trainable_names.append(name)
             elif "downsample_net" in name:
-                # Grounding downsample network (used in input) 
+                # Grounding downsample network (used in input)
                 params.append(p)
                 trainable_names.append(name)
             elif (self.input_conv_train) and ("input_blocks.0.0.weight" in name):
-                # First conv layer was modified, thus need to train 
+                # First conv layer was modified, thus need to train
                 params.append(p)
                 trainable_names.append(name)
             else:
                 # Following make sure we do not miss any new params
                 # all new added trainable params have to be haddled above
-                # otherwise it will trigger the following error  
+                # otherwise it will trigger the following error
                 assert name in original_params_names, name
             all_params_name.append(name)
 
@@ -292,11 +296,11 @@ class Trainer:
 
         # = = = = = = = = = = = = = = = = = = = = misc and ddp = = = = = = = = = = = = = = = = = = = =#
 
-        # func return input for grounding tokenizer 
+        # func return input for grounding tokenizer
         self.grounding_tokenizer_input = instantiate_from_config(config.grounding_tokenizer_input)
         self.model.grounding_tokenizer_input = self.grounding_tokenizer_input
 
-        # func return input for grounding downsampler  
+        # func return input for grounding downsampler
         self.grounding_downsampler_input = None
         if 'grounding_downsampler_input' in config:
             self.grounding_downsampler_input = instantiate_from_config(config.grounding_downsampler_input)
@@ -320,7 +324,7 @@ class Trainer:
 
         inpainting_extra_input = None
         if self.config.inpaint_mode:
-            # extra input for the inpainting model 
+            # extra input for the inpainting model
             inpainting_mask = draw_masks_from_boxes(batch['boxes'], 64, randomize_fg_mask=self.config.randomize_fg_mask,
                                                     random_add_bg_mask=self.config.random_add_bg_mask).cuda()
             masked_z = z * inpainting_mask
@@ -354,105 +358,36 @@ class Trainer:
         return loss
 
     def start_training(self):
-
-        iterator = tqdm(range(self.starting_iter, self.config.total_iters), desc='Training progress',
-                        disable=get_rank() != 0)
-        self.model.train()
-        for iter_idx in iterator:  # note: iter_idx is not from 0 if resume training
-            self.iter_idx = iter_idx
-
-            self.opt.zero_grad()
-            batch = next(self.loader_train)
-            batch_to_device(batch, self.device)
-
-            loss = self.run_one_step(batch)
-            loss.backward()
-            self.opt.step()
-            self.scheduler.step()
-
-            if self.config.enable_ema:
-                update_ema(self.ema_params, self.master_params, self.config.ema_rate)
-
-            if get_rank() == 0:
-                if iter_idx % 10 == 0:
-                    self.log_loss()
-                # if iter_idx % 50 == 0:
-                    # self.parallel_histogram_logging(iter_idx)
-                if (iter_idx == 0) or (iter_idx % self.config.save_every_iters == 0) or (
-                        iter_idx == self.config.total_iters - 1):
-                    self.save_ckpt_and_result()
-                    self.record_model = True
-            synchronize()
+        self.iter_idx=0
+        dep = '/home/cqjtu/Documents/dataset/gligen/test/dep/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915243012465.png'
+        sem = '/home/cqjtu/Documents/dataset/gligen/test/seg/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915243012465.png'
+        image = '/home/cqjtu/Documents/dataset/gligen/test/img/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915243012465.jpg'
+        prompt = 'a parking lot filled with lots of parked cars'
+        image = Image.open(image)
+        self.model.eval()
+        batch = prepare_batch_sem_depth(image, dep, sem,prompt ,1)
+        batch_to_device(batch, self.device)
+        self.save_ckpt_and_result(batch)
 
         synchronize()
         print("Training finished. Start exiting")
         exit()
 
-    def log_loss(self):
-        for k, v in self.loss_dict.items():
-            self.writer.add_scalar(k, v, self.iter_idx + 1)  # we add 1 as the actual name
-
-    def log_image(self):
-        self.writer.image("Training data", None, step=0)
-
-    def log_model(self, input):
-        # self.writer.add_graph(self.model, input)
-        self.record_model = False
-        # self.writer.add_graph(torch.jit.trace(self.model, input, strict=False), [])
-        self.writer.add_graph(torch.jit.script(self.model), [])
-
-    def log_histogram(self,  name, param, epoch):
-        bolck = "blocks"
-        if bolck in name:
-            floder=name.split('.')[0]
-            try:
-                date = param.detach().cpu().numpy()
-                grad = param.grad.detach().cpu().numpy()
-                self.writer.add_histogram(tag=floder + '/' + name.replace(floder+'.', '') + '_grad', values=grad,
-                                          global_step=epoch)
-                self.writer.add_histogram(tag=floder + '/' + name.replace(floder+'.', '') + '_data', values=date,
-                                          global_step=epoch)
-            except AttributeError as e:
-                print(f'name:{name} {e}')
-
-    def parallel_histogram_logging(self, global_step):
-        threads = []
-        for name, param in self.model.named_parameters():
-            if'fuser' in name or 'position_net'in name  or 'downsample_net' in name:
-                thread = threading.Thread(target=self.log_histogram, args=(name, param, global_step))
-                thread.start()
-                threads.append(thread)
-
-        for thread in threads:
-            thread.join()
-
-    def test_model(self, input):
-        pass
 
     @torch.no_grad()
-    def save_ckpt_and_result(self):
+    def save_ckpt_and_result(self,batch):
 
-        model_wo_wrapper = self.model.module if self.config.distributed else self.model  # ?
+        model_wo_wrapper = self.model  # ?
 
         iter_name = self.iter_idx + 1  # we add 1 as the actual name
 
         if not self.config.disable_inference_in_training:
-            # Do an inference on one training batch 
+            # Do an inference on one training batch
             batch_here = self.config.batch_size
             batch = sub_batch(next(self.loader_train), batch_here)
             batch_to_device(batch, self.device)
 
-            if "boxes" in batch:
-                real_images_with_box_drawing = []  # we save this durining trianing for better visualization
-                for i in range(batch_here):
-                    temp_data = {"image": batch["image"][i], "boxes": batch["boxes"][i]}
-                    im = self.dataset_train.datasets[0].vis_getitem_data(out=temp_data, return_tensor=True,
-                                                                         print_caption=False)
-                    real_images_with_box_drawing.append(im)
-                real_images_with_box_drawing = torch.stack(real_images_with_box_drawing)
-            else:
-                # keypoint case 
-                real_images_with_box_drawing = batch["image"] * 0.5 + 0.5  # 真实图片
+            real_images_with_box_drawing = batch["image"] * 0.5 + 0.5  # 真实图片
 
             uc = self.text_encoder.encode(batch_here * [""])
             context = self.text_encoder.encode(batch["caption"])
@@ -460,15 +395,15 @@ class Trainer:
             plms_sampler = PLMSSampler(self.diffusion, model_wo_wrapper)
             shape = (batch_here, model_wo_wrapper.in_channels, model_wo_wrapper.image_size, model_wo_wrapper.image_size)
 
-            # extra input for inpainting 
+            # extra input for inpainting
             inpainting_extra_input = None
-            if self.config.inpaint_mode:
-                z = self.autoencoder.encode(batch["image"])
-                inpainting_mask = draw_masks_from_boxes(batch['boxes'], 64,
-                                                        randomize_fg_mask=self.config.randomize_fg_mask,
-                                                        random_add_bg_mask=self.config.random_add_bg_mask).cuda()
-                masked_z = z * inpainting_mask
-                inpainting_extra_input = torch.cat([masked_z, inpainting_mask], dim=1)
+            # if self.config.inpaint_mode:
+            #     z = self.autoencoder.encode(batch["image"])
+            #     inpainting_mask = draw_masks_from_boxes(batch['boxes'], 64,
+            #                                             randomize_fg_mask=self.config.randomize_fg_mask,
+            #                                             random_add_bg_mask=self.config.random_add_bg_mask).cuda()
+            #     masked_z = z * inpainting_mask
+            #     inpainting_extra_input = torch.cat([masked_z, inpainting_mask], dim=1)
 
             grounding_extra_input = None
             if self.grounding_downsampler_input != None:
@@ -481,27 +416,16 @@ class Trainer:
                          inpainting_extra_input=inpainting_extra_input,
                          grounding_extra_input=grounding_extra_input,
                          grounding_input=grounding_input)
-            samples = plms_sampler.sample(S=50, shape=shape, input=input, uc=uc, guidance_scale=5)
+            samples = plms_sampler.sample(S=50, shape=shape, input=input, uc=uc, guidance_scale=5)  # 64✖64
 
             autoencoder_wo_wrapper = self.autoencoder  # Note itself is without wrapper since we do not train that.
-            samples = autoencoder_wo_wrapper.decode(samples).cpu()
+            samples = autoencoder_wo_wrapper.decode(samples).cpu()  # 2x3x512x512
             samples = torch.clamp(samples, min=-1, max=1)
 
-            masked_real_image = batch["image"] * torch.nn.functional.interpolate(inpainting_mask, size=(
-                512, 512)) if self.config.inpaint_mode else None
-            self.image_caption_saver(samples, real_images_with_box_drawing, masked_real_image, batch["caption"],
-                                     iter_name)
-
-        ckpt = dict(model=model_wo_wrapper.state_dict(),
-                    text_encoder=self.text_encoder.state_dict(),
-                    autoencoder=self.autoencoder.state_dict(),
-                    diffusion=self.diffusion.state_dict(),
-                    opt=self.opt.state_dict(),
-                    scheduler=self.scheduler.state_dict(),
-                    iters=self.iter_idx + 1,
-                    config_dict=self.config_dict,
-                    )
-        if self.config.enable_ema:
-            ckpt["ema"] = self.ema.state_dict()
-        torch.save(ckpt, os.path.join(self.name, "checkpoint_" + str(iter_name).zfill(8) + ".pth"))
-        torch.save(ckpt, os.path.join(self.name, "checkpoint_latest.pth"))
+            # masked_real_image = batch["image"] * torch.nn.functional.interpolate(inpainting_mask, size=(
+            #     512, 512)) if self.config.inpaint_mode else None
+            self.image_caption_saver(samples, real_images_with_box_drawing, None, batch["caption"],iter_name)
+            image = samples.cpu().clone()
+            image = image.squeeze(0)  # 压缩一维
+            image = transforms.ToPILImage()(image[0])  # 自动转换为0-255
+            image.show()

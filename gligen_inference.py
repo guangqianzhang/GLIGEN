@@ -86,8 +86,6 @@ def load_ckpt(ckpt_path):
     return model, autoencoder, text_encoder, diffusion, config
 
 
-
-
 def project(x, projection_matrix):
     """
     x (Batch*768) should be the penultimate feature of CLIP (before projection)

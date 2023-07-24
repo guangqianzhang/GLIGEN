@@ -57,14 +57,13 @@ class PLMSSampler(object):
 
 
     @torch.no_grad()
-    def sample(self, S, shape, input, uc=None, guidance_scale=1, mask=None, x0=None):
-        self.make_schedule(ddim_num_steps=S)
+    def sample(self, S, shape, input, uc=None, guidance_scale=1, mask=None, x0=None,ddim_eta=0.):
+        self.make_schedule(ddim_num_steps=S,ddim_eta=ddim_eta)
         return self.plms_sampling(shape, input, uc, guidance_scale, mask=mask, x0=x0)
 
 
     @torch.no_grad()
     def plms_sampling(self, shape, input, uc=None, guidance_scale=1, mask=None, x0=None):
-
         b = shape[0]
         
         img = input["x"]

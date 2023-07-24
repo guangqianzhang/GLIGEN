@@ -114,3 +114,9 @@ def split_graph_batch(triples, obj_data, obj_to_img, triple_to_img):
     obj_offset += o_idxs.size(0)
 
   return triples_out, obj_data_out
+
+
+def extract_into_tensor(a, t, x_shape):
+  b, *_ = t.shape
+  out = a.gather(-1, t)
+  return out.reshape(b, *((1,) * (len(x_shape) - 1)))

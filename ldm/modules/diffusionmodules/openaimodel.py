@@ -253,9 +253,11 @@ class UNetModel(nn.Module):
             inpaint_mode=False,
             grounding_downsampler=None,
             grounding_tokenizer=None,
+            use_linear_in_transformer=False,
     ):
         super().__init__()
 
+        self.use_linear=use_linear_in_transformer
         self.image_size = image_size
         self.in_channels = in_channels
         self.model_channels = model_channels
@@ -286,6 +288,9 @@ class UNetModel(nn.Module):
         self.first_conv_type = "SD"
         self.first_conv_restorable = True
         if grounding_downsampler is not None:
+            if 'sem_depth' in grounding_downsampler['target']:
+                self.enable_sem_depth_input=True
+                print('enable_sem_depth_input...')
             self.downsample_net = instantiate_from_config(grounding_downsampler)
             self.additional_channel_from_downsampler = self.downsample_net.out_dim
             self.first_conv_type = "GLIGEN"
@@ -318,7 +323,7 @@ class UNetModel(nn.Module):
                     dim_head = ch // num_heads
                     layers.append(SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads,
                                                      d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type,
-                                                     use_checkpoint=use_checkpoint))
+                                                     use_checkpoint=use_checkpoint,use_linear=self.use_linear))
 
                 self.input_blocks.append(TimestepEmbedSequential(*layers))
                 input_block_chans.append(ch)
@@ -344,7 +349,7 @@ class UNetModel(nn.Module):
                      use_checkpoint=use_checkpoint,
                      use_scale_shift_norm=use_scale_shift_norm),
             SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads, d_head=dim_head,
-                               depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint),
+                               depth=transformer_depth, fuser_type=fuser_type, use_checkpoint=use_checkpoint,use_linear=self.use_linear),
             ResBlock(ch,
                      time_embed_dim,
                      dropout,
@@ -371,7 +376,7 @@ class UNetModel(nn.Module):
                     dim_head = ch // num_heads
                     layers.append(SpatialTransformer(ch, key_dim=context_dim, value_dim=context_dim, n_heads=num_heads,
                                                      d_head=dim_head, depth=transformer_depth, fuser_type=fuser_type,
-                                                     use_checkpoint=use_checkpoint))
+                                                     use_checkpoint=use_checkpoint,use_linear=self.use_linear))
                 if level and i == num_res_blocks:
                     out_ch = ch
                     layers.append(Upsample(ch, conv_resample, dims=dims, out_channels=out_ch))
@@ -419,8 +424,11 @@ class UNetModel(nn.Module):
             grounding_input = self.grounding_tokenizer_input.get_null_input()
 
         # Grounding tokens: B*N*C
-        objs: tuple[Tensor] = self.position_net(grounding_input['sem'], grounding_input['depth'],
-                                                grounding_input['mask'])
+        if self.enable_sem_depth_input:
+            objs: tuple[Tensor] = self.position_net(grounding_input['sem'], grounding_input['depth'],
+                                                    grounding_input['mask'])
+        else:
+            objs=self.position_net(**grounding_input)
         # objs=objs[0]
         # Time embedding 
         t_emb = timestep_embedding(input["timesteps"], self.model_channels, repeat_only=False)
@@ -434,7 +442,8 @@ class UNetModel(nn.Module):
             #     temp=temp[0]+temp[1]
             # else:
             #     temp=temp
-            temp = temp[0] + temp[1]
+            if self.enable_sem_depth_input:
+                temp = temp[0] + temp[1]
             h = th.cat([h, temp], dim=1)  # c:4+8=16
         if self.inpaint_mode:
             if self.downsample_net is not None:
