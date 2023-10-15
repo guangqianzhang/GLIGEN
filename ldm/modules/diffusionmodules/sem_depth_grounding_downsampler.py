@@ -8,13 +8,13 @@ import torch.nn.functional as F
 class GroundingDownsampler(nn.Module):
     def __init__(self, resize_input=256, in_dim=152,out_dim=8):
         super().__init__()
-        self.resize_input = resize_input
-        self.out_dim = out_dim
+        self.resize_input = resize_input # 256
+        self.out_dim = out_dim  # 8
 
         self.depth_layers = nn.Sequential(
-            nn.Conv2d(1, 4, 4, 2, 1),  # in1 out4 k4x4 s2 p1
+            nn.Conv2d(1, 4, 4, 2, 1),  # in1 out4 k4x4 s2 p1 size/2
             nn.SiLU(),
-            nn.Conv2d(4, self.out_dim, 4, 2, 1)
+            nn.Conv2d(4, self.out_dim, 4, 2, 1) # size/2
         )
 
         self.sem_layers = nn.Sequential(

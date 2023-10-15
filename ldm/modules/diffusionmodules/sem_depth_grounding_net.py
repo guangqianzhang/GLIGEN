@@ -19,7 +19,7 @@ class PositionNet(nn.Module):
         self.in_conv = nn.Conv2d(in_dim, 3, 3, 1, 1)  # from num_sem to 3 channels
         self.convnext_tiny_backbone = convnext_tiny(pretrained=True)
 
-        self.num_tokens = (self.resize_input // self.down_factor) ** 2
+        self.num_tokens = (self.resize_input // self.down_factor) ** 2 #
 
         convnext_feature_dim = 768
         self.pos_embedding = nn.Parameter(
@@ -30,18 +30,18 @@ class PositionNet(nn.Module):
             nn.SiLU(),
             nn.Linear(512, 512),
             nn.SiLU(),
-            nn.Linear(512, out_dim),
+            nn.Linear(512, out_dim),  # 1024
         )
 
         self.null_feature = torch.nn.Parameter(torch.zeros([convnext_feature_dim]))
 
     def forward(self, sem, depth, mask):
         # token from edge map
-        sem = torch.nn.functional.interpolate(sem, self.resize_input, mode="nearest")
+        sem = torch.nn.functional.interpolate(sem, self.resize_input, mode="nearest")  # 256
         depth = torch.nn.functional.interpolate(depth, self.resize_input, mode="nearest")
-        sem = self.in_conv(sem)
+        sem = self.in_conv(sem)  # 256
 
-        sem_obj = self.process(sem,mask)
+        sem_obj = self.process(sem,mask)  # 64x1024
         dep_obj = self.process(depth,mask)
 
         return sem_obj, dep_obj
@@ -49,7 +49,7 @@ class PositionNet(nn.Module):
     def process(self, input, mask):
         B = input.shape[0]
         input_feature = self.convnext_tiny_backbone(input)
-        objs = input_feature.reshape(B, -1, self.num_tokens)
+        objs = input_feature.reshape(B, -1, self.num_tokens)  # num_tokens？
         objs = objs.permute(0, 2, 1)  # N*Num_tokens*dim
 
         # expand null token

@@ -137,10 +137,10 @@ class DatasetCatalog:
         self.Sem_Depth={
             "target": "dataset.dataset_sem_dep.Sem_depDataset",
             "train_params": dict(
-                image_rootdir='/home/cqjtu/Documents/dataset/gligen/front/img',
-                depth_rootdir='/home/cqjtu/Documents/dataset/gligen/front/dep',
-                sem_rootdir='/home/cqjtu/Documents/dataset/gligen/front/seg',
-                caption_path='/home/cqjtu/Documents/dataset/gligen/front/test_caption.json'
+                image_rootdir='/home/cqjtu/Documents/dataset/nuscenes2/img',
+                depth_rootdir='/home/cqjtu/Documents/dataset/nuscenes2/dep',
+                sem_rootdir='/home/cqjtu/Documents/dataset/nuscenes2/seg',
+                caption_path='/home/cqjtu/Documents/dataset/nuscenes2/img/images_cation.json',
             ),
         }
 

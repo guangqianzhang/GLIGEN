@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from contextlib import contextmanager
 
+from einops import rearrange
+
 # from taming.modules.vqvae.quantize import VectorQuantizer2 as VectorQuantizer
 
 from ldm.modules.diffusionmodules.model import Encoder, Decoder

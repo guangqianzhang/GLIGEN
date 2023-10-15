@@ -16,7 +16,8 @@ class DDIMSampler(object):
         self.schedule = schedule
         self.alpha_generator_func = alpha_generator_func
         self.set_alpha_scale = set_alpha_scale
-        
+
+
 
     def register_buffer(self, name, attr):
         if type(attr) == torch.Tensor:
@@ -31,9 +32,9 @@ class DDIMSampler(object):
         assert alphas_cumprod.shape[0] == self.ddpm_num_timesteps, 'alphas have to be defined for each timestep'
         to_torch = lambda x: x.clone().detach().to(torch.float32).to(self.device)
 
-        self.register_buffer('betas', to_torch(self.diffusion.betas))
-        self.register_buffer('alphas_cumprod', to_torch(alphas_cumprod))
-        self.register_buffer('alphas_cumprod_prev', to_torch(self.diffusion.alphas_cumprod_prev))
+        self.register_buffer('betas', to_torch(self.diffusion.betas))  # 0.0009
+        self.register_buffer('alphas_cumprod', to_torch(alphas_cumprod))  # 0.9991
+        self.register_buffer('alphas_cumprod_prev', to_torch(self.diffusion.alphas_cumprod_prev)) # 1.
 
         # calculations for diffusion q(x_t | x_{t-1}) and others
         self.register_buffer('sqrt_alphas_cumprod', to_torch(np.sqrt(alphas_cumprod.cpu())))
@@ -57,13 +58,27 @@ class DDIMSampler(object):
 
 
     @torch.no_grad()
-    def sample(self, S, shape, input, uc=None, guidance_scale=1, mask=None, x0=None,ddim_eta=0.):
-        self.make_schedule(ddim_num_steps=S,ddim_eta=ddim_eta)
-        return self.ddim_sampling(shape, input, uc, guidance_scale,  mask=mask, x0=x0)
+    def sample(self,
+               S,
+               shape,
+               input,
+               uc=None,
+               guidance_scale=1,
+               mask=None,
+               x0=None,
+               ucg_schedule=None,
+               log_every_t=100,
+               ddim_eta=0.):
+        # self.make_schedule(ddim_num_steps=S,ddim_eta=ddim_eta)
+        return self.ddim_sampling(shape, input, uc, guidance_scale,  mask=mask, x0=x0,
+                                  log_every_t=log_every_t,ucg_schedule=ucg_schedule)
  
 
     @torch.no_grad()
-    def ddim_sampling(self, shape, input, uc, guidance_scale=1, mask=None, x0=None):
+    def ddim_sampling(self, shape, input, uc, guidance_scale=1,
+                      timesteps=None,ddim_use_original_steps=False,
+                      mask=None, x0=None,log_every_t=100,
+                      ucg_schedule=None):
         b = shape[0]
         
         img = input["x"]
@@ -101,7 +116,7 @@ class DDIMSampler(object):
                 input["x"] = img
             
             img, pred_x0 = self.p_sample_ddim(input, index=index, uc=uc, guidance_scale=guidance_scale)
-            input["x"] = img 
+            input["x"] = img
 
         return img
 
@@ -110,12 +125,16 @@ class DDIMSampler(object):
     def p_sample_ddim(self, input, index, uc=None, guidance_scale=1):
 
 
-        e_t = self.model(input) 
+        model_output = self.model(input)  # 1x4x64x64
         if uc is not None and guidance_scale != 1:
             unconditional_input = dict(x=input["x"], timesteps=input["timesteps"], context=uc, inpainting_extra_input=input["inpainting_extra_input"], grounding_extra_input=input['grounding_extra_input'])
             e_t_uncond = self.model( unconditional_input ) 
-            e_t = e_t_uncond + guidance_scale * (e_t - e_t_uncond)
+            model_output = e_t_uncond + guidance_scale * (model_output - e_t_uncond)
 
+        if self.diffusion.parameterization == "v":
+            e_t = self.diffusion.predict_eps_from_z_and_v(x=input["x"], t=input["timesteps"], v=model_output)
+        else:
+            e_t = model_output
         # select parameters corresponding to the currently considered timestep
         b = input["x"].shape[0] 
         a_t = torch.full((b, 1, 1, 1), self.ddim_alphas[index], device=self.device)
@@ -124,11 +143,14 @@ class DDIMSampler(object):
         sqrt_one_minus_at = torch.full((b, 1, 1, 1), self.ddim_sqrt_one_minus_alphas[index],device=self.device)
 
         # current prediction for x_0
-        pred_x0 = (input["x"] - sqrt_one_minus_at * e_t) / a_t.sqrt()
+        if self.diffusion.parameterization != "v":
+            pred_x0 = (input["x"] - sqrt_one_minus_at * e_t) / a_t.sqrt()
+        else:
+            pred_x0 = self.diffusion.predict_start_from_z_and_v(input["x"], input["timesteps"], model_output)
 
         # direction pointing to x_t
         dir_xt = (1. - a_prev - sigma_t**2).sqrt() * e_t
-        noise = sigma_t * torch.randn_like( input["x"] ) 
+        noise = sigma_t * torch.randn_like( input["x"],device=self.device )
         x_prev = a_prev.sqrt() * pred_x0 + dir_xt + noise
 
         return x_prev, pred_x0
@@ -151,3 +173,26 @@ class DDIMSampler(object):
         return (extract_into_tensor(sqrt_alphas_cumprod, t, x0.shape) * x0 +
                 extract_into_tensor(sqrt_one_minus_alphas_cumprod, t, x0.shape) * noise)
 
+    @torch.no_grad()
+    def decode(self,input, t_start,shape,guidance_scale=1.0, uc=None, use_original_steps=False):
+        b=shape[0]
+        img = input["x"]
+        if img == None:
+            img = torch.randn(shape, device=self.device)
+            input["x"] = img
+
+        timesteps =self.ddim_timesteps
+        timesteps = timesteps[:t_start]
+
+        time_range = np.flip(timesteps)
+        total_steps = timesteps.shape[0]
+        # print(f"Running DDIM Sampling with {total_steps} timesteps")
+
+        iterator = tqdm(time_range, desc='Decoding image', total=total_steps)
+
+        for i, step in enumerate(iterator):
+            index = total_steps - i - 1
+            input["timesteps"] = torch.full((b,), step, device=self.device, dtype=torch.long)
+            img, pred_x0 = self.p_sample_ddim(input, index=index, uc=uc, guidance_scale=guidance_scale)
+        input["x"] = img
+        return img

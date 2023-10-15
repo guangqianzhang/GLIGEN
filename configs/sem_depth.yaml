@@ -4,6 +4,7 @@ diffusion:
     linear_start: 0.00085
     linear_end: 0.012
     timesteps: 1000
+    parameterization: 'v'
 #    first_stage_key: "jpg"
 #    cond_stage_key: "txt"
 
@@ -29,7 +30,7 @@ model:
         target: ldm.modules.diffusionmodules.sem_depth_grounding_downsampler.GroundingDownsampler
         params:
           in_dim: 152  # seg
-          resize_input: 256
+          resize_input: 256 # 256 384
           out_dim: 8
 
 
@@ -37,7 +38,7 @@ model:
         target: ldm.modules.diffusionmodules.sem_depth_grounding_net.PositionNet
         params:
           in_dim: 152
-          resize_input: 256
+          resize_input: 256 # 384
           out_dim: 1024  #1024 in SDv2 ; 768 in SDv1
 
 
@@ -70,7 +71,7 @@ text_encoder:
 train_dataset_names:
   Sem_Depth:
     prob_use_caption: 1
-    image_size: 512
+    image_size: 512  #768
     random_flip: True
 
 

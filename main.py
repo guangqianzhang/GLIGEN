@@ -26,12 +26,13 @@ if __name__ == "__main__":
     parser.add_argument("--base_learning_rate", type=float,  default=5e-5, help="")
     parser.add_argument("--weight_decay", type=float,  default=0.0, help="")
     parser.add_argument("--warmup_steps", type=int,  default=10000, help="")
-    parser.add_argument("--scheduler_type", type=str,  default='constant', help="cosine or constant")
+    parser.add_argument("--scheduler_type", type=str,  default='cosine', help="cosine or constant")
     parser.add_argument("--batch_size", type=int,  default=2, help="")
-    parser.add_argument("--workers", type=int,  default=1, help="")
+    parser.add_argument("--workers", type=int,  default=16, help="")
     parser.add_argument("--official_ckpt_name", type=str,
-                        default="/home/cqjtu/PycharmProjects/stablediffusion/checkpoints/v2-1_768-ema-pruned.ckpt", help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
-    parser.add_argument("--ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None,  default=None, 
+                        default="/home/cqjtu/PycharmProjects/stablediffusion/checkpoints/v2-1_512-ema-pruned.ckpt", help="SD ckpt name and it is expected in DATA_ROOT, thus DATA_ROOT/official_ckpt_name must exists")
+    parser.add_argument("--ckpt", type=lambda x:x if type(x) == str and x.lower() != "none" else None,
+                        default=None,
         help=("If given, then it will start training from this ckpt"
               "It has higher prioty than official_ckpt_name, but lower than the ckpt found in autoresuming (see trainer.py) "
               "It must be given if inpaint_mode is true")

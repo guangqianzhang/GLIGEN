@@ -425,25 +425,24 @@ class UNetModel(nn.Module):
 
         # Grounding tokens: B*N*C
         if self.enable_sem_depth_input:
-            objs: tuple[Tensor] = self.position_net(grounding_input['sem'], grounding_input['depth'],
-                                                    grounding_input['mask'])
+            objs: tuple[Tensor] = self.position_net(grounding_input['sem'], grounding_input['depth'], grounding_input['mask'])
         else:
             objs=self.position_net(**grounding_input)
         # objs=objs[0]
         # Time embedding 
-        t_emb = timestep_embedding(input["timesteps"], self.model_channels, repeat_only=False)
-        emb = self.time_embed(t_emb)
+        t_emb = timestep_embedding(input["timesteps"], self.model_channels, repeat_only=False) # 320
+        emb = self.time_embed(t_emb) # 1280
 
         # input tensor  
         h = input["x"]
         if self.downsample_net is not None and self.first_conv_type == "GLIGEN":
-            temp = self.downsample_net(input["grounding_extra_input"])
+            temp = self.downsample_net(input["grounding_extra_input"])  # 8x64x64
             # if isinstance(temp,tuple):
             #     temp=temp[0]+temp[1]
             # else:
             #     temp=temp
             if self.enable_sem_depth_input:
-                temp = temp[0] + temp[1]
+                temp = temp[0] + temp[1]  # temp= th.cat(temp[0],temp[1],dim=1)
             h = th.cat([h, temp], dim=1)  # c:4+8=16
         if self.inpaint_mode:
             if self.downsample_net is not None:

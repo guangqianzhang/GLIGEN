@@ -117,6 +117,7 @@ class Sem_depDataset():
             sem = ImageOps.mirror(sem)
             depth = ImageOps.mirror(depth)
 
+        image=( self.pil_to_tensor(image).float()/255 - 0.5 ) / 0.5
         sem = self.pil_to_tensor(sem)[0,:,:]
         depth= (self.pil_to_tensor(depth).float() / 255 - 0.5) / 0.5
 
@@ -124,7 +125,7 @@ class Sem_depDataset():
         input_label = torch.zeros(152, self.image_size, self.image_size)
         sem = input_label.scatter_(0, sem.long().unsqueeze(0), 1.0)
 
-        out['image'] = ( self.pil_to_tensor(image).float()/255 - 0.5 ) / 0.5
+        out['image'] = image
         out['sem'] = sem
         out['depth']=depth
         out['mask'] = torch.tensor(1.0) 

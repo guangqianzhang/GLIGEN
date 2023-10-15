@@ -9,10 +9,15 @@ from ldm.modules.diffusionmodules.util import make_beta_schedule
 
 
 class DDPM(nn.Module):
-    def __init__(self, beta_schedule="linear", timesteps=1000, linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):
+    def __init__(self, beta_schedule="linear", timesteps=1000,
+                 parameterization="eps",  # all assuming fixed variance schedules
+                 linear_start=1e-4, linear_end=2e-2, cosine_s=8e-3):
         super().__init__()
 
-        self.v_posterior = 0 
+        self.v_posterior = 0
+        assert parameterization in ["eps", "x0", "v"], 'currently only supporting "eps" and "x0" and "v"'
+        self.parameterization = parameterization
+        print(f"{self.__class__.__name__}: Running in {self.parameterization}-prediction mode")
         self.register_schedule(beta_schedule, timesteps, linear_start, linear_end, cosine_s)
 
 
@@ -53,7 +58,19 @@ class DDPM(nn.Module):
         self.register_buffer('posterior_mean_coef1', to_torch( betas * np.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod)))
         self.register_buffer('posterior_mean_coef2', to_torch( (1. - alphas_cumprod_prev) * np.sqrt(alphas) / (1. - alphas_cumprod)))
 
-
+        if self.parameterization == "eps":
+            lvlb_weights = self.betas ** 2 / (
+                    2 * self.posterior_variance * to_torch(alphas) * (1 - self.alphas_cumprod))
+        elif self.parameterization == "x0":
+            lvlb_weights = 0.5 * np.sqrt(torch.Tensor(alphas_cumprod)) / (2. * 1 - torch.Tensor(alphas_cumprod))
+        elif self.parameterization == "v":
+            lvlb_weights = torch.ones_like(self.betas ** 2 / (
+                    2 * self.posterior_variance * to_torch(alphas) * (1 - self.alphas_cumprod)))
+        else:
+            raise NotImplementedError("mu not supported")
+        lvlb_weights[0] = lvlb_weights[1]
+        self.register_buffer('lvlb_weights', lvlb_weights, persistent=False)
+        assert not torch.isnan(self.lvlb_weights).all()
 
 
 

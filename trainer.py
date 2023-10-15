@@ -1,3 +1,4 @@
+import gc
 import threading
 
 import torch
@@ -168,7 +169,7 @@ class Trainer:
 
         self.config = config
         self.device = torch.device("cuda")
-
+        # os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
         self.record_model = True
         self.l_simple_weight = 1
         self.name, self.writer, checkpoint = create_expt_folder_with_auto_resuming(config.OUTPUT_ROOT, config.name)
@@ -383,7 +384,8 @@ class Trainer:
                     self.save_ckpt_and_result()
                     self.record_model = True
             synchronize()
-
+            gc.collect()
+            torch.cuda.empty_cache()
         synchronize()
         print("Training finished. Start exiting")
         exit()
@@ -487,6 +489,18 @@ class Trainer:
             samples = autoencoder_wo_wrapper.decode(samples).cpu()
             samples = torch.clamp(samples, min=-1, max=1)
 
+            samples = torch.nn.functional.interpolate(
+                samples,
+                size=(900, 1600),
+                mode="bicubic",
+                align_corners=False,
+            )
+            real_images_with_box_drawing = torch.nn.functional.interpolate(
+                real_images_with_box_drawing,
+                size=(900, 1600),
+                mode="bicubic",
+                align_corners=False,
+            )
             masked_real_image = batch["image"] * torch.nn.functional.interpolate(inpainting_mask, size=(
                 512, 512)) if self.config.inpaint_mode else None
             self.image_caption_saver(samples, real_images_with_box_drawing, masked_real_image, batch["caption"],

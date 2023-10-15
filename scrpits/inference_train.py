@@ -359,23 +359,27 @@ class Trainer:
 
     def start_training(self):
         self.iter_idx=0
-        dep = '/home/cqjtu/Documents/dataset/gligen/test/dep/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915243012465.png'
-        sem = '/home/cqjtu/Documents/dataset/gligen/test/seg/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915243012465.png'
-        image = '/home/cqjtu/Documents/dataset/gligen/test/img/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915243012465.jpg'
-        prompt = 'a parking lot filled with lots of parked cars'
-        image = Image.open(image)
+        # dep = '/home/cqjtu/Documents/dataset/gligen/test/dep/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915243012465.png'
+        # sem = '/home/cqjtu/Documents/dataset/gligen/test/seg/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915243012465.png'
+        # image = '/home/cqjtu/Documents/dataset/gligen/test/img/n008-2018-05-21-11-06-59-0400__CAM_FRONT__1526915243012465.jpg'
+        # prompt = 'a parking lot filled with lots of parked cars'
+        iterator = tqdm(range(self.starting_iter, self.config.total_iters), desc='Training progress',
+                        disable=get_rank() != 0)
         self.model.eval()
-        batch = prepare_batch_sem_depth(image, dep, sem,prompt ,1)
-        batch_to_device(batch, self.device)
-        self.save_ckpt_and_result(batch)
+        for iter_idx in iterator:  # note: iter_idx is not from 0 if resume training
+            self.iter_idx = iter_idx
+            self.save_ckpt_and_result()
+
+            synchronize()
 
         synchronize()
         print("Training finished. Start exiting")
         exit()
 
 
+
     @torch.no_grad()
-    def save_ckpt_and_result(self,batch):
+    def save_ckpt_and_result(self):
 
         model_wo_wrapper = self.model  # ?
 
@@ -397,13 +401,6 @@ class Trainer:
 
             # extra input for inpainting
             inpainting_extra_input = None
-            # if self.config.inpaint_mode:
-            #     z = self.autoencoder.encode(batch["image"])
-            #     inpainting_mask = draw_masks_from_boxes(batch['boxes'], 64,
-            #                                             randomize_fg_mask=self.config.randomize_fg_mask,
-            #                                             random_add_bg_mask=self.config.random_add_bg_mask).cuda()
-            #     masked_z = z * inpainting_mask
-            #     inpainting_extra_input = torch.cat([masked_z, inpainting_mask], dim=1)
 
             grounding_extra_input = None
             if self.grounding_downsampler_input != None:
@@ -417,7 +414,7 @@ class Trainer:
                          grounding_extra_input=grounding_extra_input,
                          grounding_input=grounding_input)
             samples = plms_sampler.sample(S=50, shape=shape, input=input, uc=uc, guidance_scale=5)  # 64✖64
-
+            # VAE
             autoencoder_wo_wrapper = self.autoencoder  # Note itself is without wrapper since we do not train that.
             samples = autoencoder_wo_wrapper.decode(samples).cpu()  # 2x3x512x512
             samples = torch.clamp(samples, min=-1, max=1)
